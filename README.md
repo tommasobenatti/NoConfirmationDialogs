@@ -25,7 +25,7 @@ NCD removes Minecraft's extra **Confirm Command Execution** screen from clickabl
 
 ## Installation
 
-1. Download `NoConfirmationDialogs-1.0-stable.jar` from the [latest release](https://github.com/tommasobenatti/NoConfirmationDialogs/releases/latest).
+1. Download `NoConfirmationDialogs-1.0.1-stable.jar` from the [latest release](https://github.com/tommasobenatti/NoConfirmationDialogs/releases/latest).
 2. Stop the relevant server/proxy, put the JAR in its `plugins/` folder, and start it again.
 3. Reconnect and click an existing chat command, such as a HuskHomes teleport request.
 
@@ -100,13 +100,15 @@ Consumed requests also count toward the host's native packet limits. Paper-speci
 
 NCD makes no “unexploitable” guarantee. Servers and plugins able to author command components are trusted message sources, and this plugin intentionally removes an extra client confirmation for their chat actions. Keep your host and permission setup updated.
 
+**InteractiveChat compatibility:** `1.0.1-stable` supplies a tiny explicit, inert custom-click payload to avoid PacketEvents 2.14.0's unstringifiable END-tag representation of an absent payload. The command remains server-side. Tested with InteractiveChat 2026.1.3.0 and its PacketEvents addon 1.3.1; see [compatibility verification](docs/COMPATIBILITY-1.0.1.md).
+
 ## Build and contribute
 
 ```sh
 mvn clean verify
 ```
 
-Output: `target/NoConfirmationDialogs-1.0-stable.jar`. Host APIs are provided dependencies; no packet library is shaded or downloaded at runtime. Reproducible QA commands live in [qa/README.md](qa/README.md). CI builds and tests; release publication is a maintainer action.
+Output: `target/NoConfirmationDialogs-1.0.1-stable.jar`. Host APIs are provided dependencies; no packet library is shaded or downloaded at runtime. Reproducible QA commands live in [qa/README.md](qa/README.md). CI builds and tests; release publication is a maintainer action.
 
 Bug reports should include the Minecraft version, host build, where NCD is installed, and a minimal reproduction. Send security-sensitive reports through [GitHub's private security reporting](https://github.com/tommasobenatti/NoConfirmationDialogs/security), when enabled.
 

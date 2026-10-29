@@ -6,6 +6,18 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 
 class CommandClicksTest {
+    @Test void emptyCompoundIsExplicitForBothPlatformScopesWithoutCommandMetadata() {
+        for (String scope : new String[]{"paper", "proxy"}) {
+            var registry = new CommandClicks(() -> 0, 10, 1000, scope);
+            var source = JsonParser.parseString("{\"text\":\"Accept\",\"click_event\":{\"action\":\"run_command\",\"command\":\"/tpaccept Alice\"}}");
+            var fixed = registry.rewrite(source).getAsJsonObject().getAsJsonObject("click_event");
+            assertNotNull(fixed.get("payload"));
+            assertEquals("{}", fixed.get("payload").getAsString());
+            assertEquals(3, fixed.size());
+            assertFalse(fixed.toString().contains("tpaccept"));
+            assertEquals("tpaccept Alice", registry.resolve(fixed.get("id").getAsString()).orElseThrow());
+        }
+    }
     @Test void convertsNestedChatAndPreservesFormattingAndOtherActions() {
         var clicks = new CommandClicks(() -> 0L, 10, 1000);
         var source = JsonParser.parseString("""

@@ -30,9 +30,11 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--work-dir', type=Path, required=True)
     parser.add_argument('--node', required=True)
+    parser.add_argument('--backend-heap', choices=['512M', '1536M', '2048M'], default='512M')
+    parser.add_argument('--interactivechat', action='store_true')
     args = parser.parse_args()
     base = args.work_dir.resolve()
-    jar = ROOT / 'target/NoConfirmationDialogs-1.0-stable.jar'
+    jar = ROOT / 'target/NoConfirmationDialogs-1.0.1-stable.jar'
     backend = base / 'runtime-1.21.6'
     for old in (backend / 'plugins').glob('NoConfirmationDialogs-*.jar'):
         if old.name != jar.name: old.unlink()
@@ -41,6 +43,7 @@ def main():
     results = []
 
     def start(folder, command, logfile):
+        if folder == backend and args.interactivechat: command.insert(1, '-Dncd.qa.require-interactive=true')
         if os.environ.get('NCD_JACOCO_AGENT'):
             command.insert(1, '-javaagent:' + os.environ['NCD_JACOCO_AGENT'] + '=destfile=' + str(ROOT / 'target' / (folder.name + '.exec')) + ',includes=io.github.tommasobenatti.ncd.*,classdumpdir=' + str(ROOT / 'target/runtime-dump' / folder.name))
         log = folder / logfile
@@ -60,7 +63,7 @@ def main():
             raise AssertionError(proc.stdout + proc.stderr)
 
     try:
-        proc, backend_log = start(backend, ['java', '-Dterminal.jline=false', '-Dterminal.ansi=false', '-Dncd.qa.keep-running=true', '-Xmx512M', '-jar', str(base / 'paper-1.21.6.jar'), '--nogui'], 'network-probe.log')
+        proc, backend_log = start(backend, ['java', '-Dterminal.jline=false', '-Dterminal.ansi=false', '-Dncd.qa.keep-running=true', '-Xmx' + args.backend_heap, '-jar', str(base / 'paper-1.21.6.jar'), '--nogui'], 'network-probe.log')
         wait_log(proc, backend_log, 'NCD_RUNTIME_PASS')
         client(25900, 'paper')
         for name in ['velocity', 'bungee']:
@@ -131,6 +134,9 @@ servers:
             proxy.wait(timeout=25)
             results.append({'platform': name, 'passed': True, 'proxy_command': True, 'backend_command_event': True, 'cancelled_event': True})
         output = backend_log.read_text()
+        if args.interactivechat:
+            assert 'NCD_ICPE_NETWORK_READY' in output
+            assert 'EndBinaryTag' not in output and 'native adventure components' not in output
         assert output.count('NCD_COMMAND_EXECUTED NcdProbe') == 3, 'Expected exactly one backend command per connection'
         assert 'NCD_PERMISSION_BYPASSED' not in output
         assert output.count('NCD_STANDALONE_ALLOWED NcdProbe') == 1, 'Proxy denied backend command executed'

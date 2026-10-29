@@ -4,6 +4,7 @@ NCD intentionally removes Minecraft's second confirmation for server-provided ch
 
 - Commands execute as the clicking player, with normal platform permissions and command events.
 - Incoming custom-click payloads never supply the command to execute. Commands are looked up using random, session-bound identifiers registered from outgoing server messages.
+- Since 1.0.1 the click carries a tiny inert compatibility value rather than an absent payload, avoiding InteractiveChat/PacketEvents END-tag conversion errors. This value contains no command and has no execution authority.
 - A proxy imports backend commands only from directional server-origin registration messages. Click components contain an identifier with no command echo payload; client-supplied registration messages are not imported.
 - Paper publishes token registrations on the native `ncd:register` backend-to-proxy channel before chat delivery. Proxy aliases are imported only on outgoing server-origin traffic. Unknown Paper-scoped tokens are consumed at the proxy rather than forwarded around its command policy.
 - Identifiers from another connection, unknown identifiers, expired entries and excessive click rates cannot execute a registered command.

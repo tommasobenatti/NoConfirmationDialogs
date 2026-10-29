@@ -12,7 +12,7 @@ class RegistrationTest {
         var original = new com.google.gson.JsonObject(); original.addProperty("text", "long action");
         var event = new com.google.gson.JsonObject(); event.addProperty("action", "run_command"); event.addProperty("command", "x".repeat(32767)); original.add("click_event", event);
         var fixed = registry.rewrite(original).getAsJsonObject().getAsJsonObject("click_event");
-        assertFalse(fixed.has("payload"));
+        assertEquals("{}", fixed.get("payload").getAsString());
         assertEquals(32767, registry.resolve(fixed.get("id").getAsString()).orElseThrow().length());
         assertEquals(32767, RegistrationFrame.decode(RegistrationFrame.encode(registry.drainExports().getFirst())).command().length());
     }

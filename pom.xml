@@ -2,7 +2,7 @@
   <modelVersion>4.0.0</modelVersion>
   <groupId>io.github.tommasobenatti</groupId>
   <artifactId>NoConfirmationDialogs</artifactId>
-  <version>1.0-stable</version>
+  <version>1.0.1-stable</version>
   <name>NCD — No Confirmation Dialogs</name>
   <description>Automatic, dependency-free command click conversion for Paper.</description>
   <url>https://github.com/tommasobenatti/NoConfirmationDialogs</url>

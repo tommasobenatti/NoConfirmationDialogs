@@ -63,6 +63,15 @@ public final class RuntimeProbe extends JavaPlugin implements Listener {
     }
 
     private void probe() throws Exception {
+        if (Boolean.getBoolean("ncd.qa.require-interactive")) {
+            for (var dependency : java.util.Map.of("InteractiveChat", "2026.1.3.0", "InteractiveChat-PacketEvents", "1.3.1", "packetevents", "2.14.0").entrySet()) {
+                var installed = getServer().getPluginManager().getPlugin(dependency.getKey());
+                check(installed != null && installed.isEnabled() && installed.getDescription().getVersion().equals(dependency.getValue()), "Live compatibility dependency " + dependency);
+            }
+            var interactive = getServer().getPluginManager().getPlugin("InteractiveChat");
+            Class.forName("com.loohp.interactivechat.listeners.packet.MessagePacketHandler", true, interactive.getClass().getClassLoader());
+            getLogger().info("NCD_ICPE_NETWORK_READY");
+        }
         var plugin = getServer().getPluginManager().getPlugin("NoConfirmationDialogs");
         check(plugin != null && plugin.isEnabled(), "plugin enabled");
         ClassLoader loader = plugin.getClass().getClassLoader();

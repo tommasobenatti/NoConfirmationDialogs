@@ -191,6 +191,9 @@ final class CommandClicks {
                     JsonObject replacement = new JsonObject();
                     replacement.addProperty("action", "custom");
                     replacement.addProperty("id", token.get());
+                    // An absent payload is represented as END by PacketEvents 2.14.0;
+                    // IC's Adventure conversion cannot stringify that tag. Use a tiny explicit value.
+                    replacement.addProperty("payload", "{}");
                     // Commands travel only over the directional server registration channel.
                     // The client receives an identifier with no command-sized echo payload.
                     object.add("click_event", replacement);

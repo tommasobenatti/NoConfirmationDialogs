@@ -60,7 +60,7 @@ class ClickHandlerTest {
         String token = adopted.getAsJsonObject().getAsJsonObject("click_event").get("id").getAsString();
         assertTrue(proxy.owns(token));
         assertTrue(paper.owns(token));
-        assertFalse(adopted.getAsJsonObject().getAsJsonObject("click_event").has("payload"));
+        assertEquals("{}", adopted.getAsJsonObject().getAsJsonObject("click_event").get("payload").getAsString());
         assertEquals("help", proxy.resolve(token).orElseThrow());
         assertSame(adopted, proxy.rewrite(adopted));
     }

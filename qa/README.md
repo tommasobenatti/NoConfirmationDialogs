@@ -55,3 +55,13 @@ For each release, the maintainer should test a normal Minecraft client on the in
 ## Resource microbenchmark
 
 Compile `qa/PerfProbe.java` with the same dependency classpath as the project and run it against the baseline and release classes. It warms each path, reports per-thread allocation and nanoseconds per operation, and inserts 4,096 distinct commands with 8 KiB bodies. Repeat in three fresh JVMs with `-Xms128m -Xmx512m`. This measures a small component/registry workload; it is not a server TPS or network latency result. The stable run must keep admitted text under the aggregate budget. See `docs/performance-results.json` for retained measurements.
+
+## InteractiveChat / PacketEvents integration
+
+`InteractiveChatProbe.java` is a separate test plugin, never included in NCD's JAR. It uses the real native system-chat encoder, PacketEvents wrapper/decoder, InteractiveChat native/shaded Adventure converters, and three additional native re-encode passes. It checks exact token/command preservation, unrelated URL actions, bounded inert payloads, and maximum-length commands.
+
+Provide official JARs in a disposable `WORK/plugins-source`: InteractiveChat 2026.1.3.0, InteractiveChat-PacketEvents 1.3.1, PacketEvents 2.14.0 (Spigot), plus required PlaceholderAPI/Vault dependencies. Compile the probe against Paper's dependency classpath and the PacketEvents JAR into `WORK/probe-classes`. Run `qa/interactivechat_smoke.py --help` for explicit host/cache/JAR arguments. Use the original 1.0-stable JAR with `--expect-red` to reproduce the END failure; use 1.0.1-stable without that flag for the corrected run. `--accept-eula` is required.
+
+The baseline passes only if it reproduces the original END-tag failure; the corrected run must pass compatibility assertions with real plugins enabled and no target conversion warning. It records artifact hashes and exact plugin versions. Dependencies are test inputs; they are neither modified nor bundled in NCD.
+
+For a real outbound pipeline/client test, stage the same third-party JARs in the disposable `runtime-1.21.6/plugins` and run the network fixture with `--interactivechat --backend-heap 1536M`. It requires the exact three plugins enabled before continuing. The higher heap is only for the developer fixture's full stack: the minimal 512 MiB test heap was insufficient for InteractiveChat's initial classpath scan. No production memory setting changes. Remove staged third-party JARs before running the pure NCD version matrix again.
