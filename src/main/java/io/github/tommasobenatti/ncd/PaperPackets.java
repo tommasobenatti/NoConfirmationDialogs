@@ -8,6 +8,8 @@ import java.lang.reflect.RecordComponent;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.Map;
+import java.util.HashMap;
 
 final class PaperPackets implements PacketAdapter {
     private static final String GAME = "net.minecraft.network.protocol.game.";
@@ -15,6 +17,12 @@ final class PaperPackets implements PacketAdapter {
     private final Method toJson, fromJson, clickId, subPackets;
     private final Constructor<?> command, bundle;
     private final Class<?> customClick;
+    private final Method clickPayload, tagSize;
+    private final Constructor<?> discardedPayload, customPayload;
+    private final Object registrationId;
+    private record Layout(Constructor<?> constructor, Method[] accessors, boolean[] components) { }
+    private final Map<Class<?>, Layout> layouts;
+    private final PaperBudget budget = new PaperBudget();
 
     PaperPackets() throws ReflectiveOperationException {
         Class<?> serializer = Class.forName("org.bukkit.craftbukkit.util.CraftChatMessage");
@@ -22,15 +30,34 @@ final class PaperPackets implements PacketAdapter {
         fromJson = serializer.getMethod("fromJSON", String.class);
         customClick = Class.forName("net.minecraft.network.protocol.common.ServerboundCustomClickActionPacket");
         clickId = customClick.getMethod("id");
+        clickPayload = customClick.getMethod("payload");
+        tagSize = Class.forName("net.minecraft.nbt.Tag").getMethod("sizeInBytes");
         command = Class.forName(GAME + "ServerboundChatCommandPacket").getConstructor(String.class);
         Class<?> bundleClass = Class.forName(GAME + "ClientboundBundlePacket");
         bundle = bundleClass.getConstructor(Iterable.class);
         subPackets = bundleClass.getMethod("subPackets");
+        Class<?> discarded = Class.forName("net.minecraft.network.protocol.common.custom.DiscardedPayload");
+        Class<?> identifier = discarded.getRecordComponents()[0].getType();
+        registrationId = identifier.getMethod("parse", String.class).invoke(null, RegistrationFrame.CHANNEL);
+        discardedPayload = discarded.getConstructor(identifier, byte[].class);
+        customPayload = Class.forName("net.minecraft.network.protocol.common.ClientboundCustomPayloadPacket")
+                .getConstructor(Class.forName("net.minecraft.network.protocol.common.custom.CustomPacketPayload"));
         // Fail at startup rather than silently announcing support for an incompatible packet layout.
+        Map<Class<?>, Layout> cached = new HashMap<>();
         for (String type : List.of("ClientboundSystemChatPacket", "ClientboundDisguisedChatPacket", "ClientboundPlayerChatPacket")) {
             Class<?> packet = Class.forName(GAME + type);
             if (!packet.isRecord()) throw new IllegalStateException("Unsupported packet layout: " + type);
+            RecordComponent[] fields = packet.getRecordComponents();
+            Class<?>[] types = new Class<?>[fields.length];
+            Method[] accessors = new Method[fields.length];
+            boolean[] components = new boolean[fields.length];
+            for (int i = 0; i < fields.length; i++) {
+                types[i] = fields[i].getType(); accessors[i] = fields[i].getAccessor();
+                components[i] = types[i] == component || fields[i].getName().equals("unsignedContent");
+            }
+            cached.put(packet, new Layout(packet.getConstructor(types), accessors, components));
         }
+        layouts = Map.copyOf(cached);
     }
 
     @Override public Object rewrite(Object packet, CommandClicks clicks) throws ReflectiveOperationException {
@@ -44,25 +71,27 @@ final class PaperPackets implements PacketAdapter {
             }
             return changed ? bundle.newInstance(children) : packet;
         }
-        if (!name.equals(GAME + "ClientboundSystemChatPacket")
-                && !name.equals(GAME + "ClientboundDisguisedChatPacket")
-                && !name.equals(GAME + "ClientboundPlayerChatPacket")) return packet;
-        RecordComponent[] fields = packet.getClass().getRecordComponents();
-        Object[] values = new Object[fields.length];
-        Class<?>[] types = new Class<?>[fields.length];
-        boolean changed = false;
-        for (int i = 0; i < fields.length; i++) {
-            types[i] = fields[i].getType();
-            Object value = fields[i].getAccessor().invoke(packet);
+        Layout layout = layouts.get(packet.getClass());
+        if (layout == null) return packet;
+        Object[] values = null;
+        for (int i = 0; i < layout.accessors.length; i++) {
+            if (!layout.components[i]) continue;
+            Object value = layout.accessors[i].invoke(packet);
             Object next = value;
             if (component.isInstance(value)) next = rewriteComponent(value, clicks);
             else if (value instanceof Optional<?> optional && optional.isPresent() && component.isInstance(optional.get())) {
                 Object result = rewriteComponent(optional.get(), clicks);
                 if (result != optional.get()) next = Optional.of(result);
             }
-            values[i] = next; changed |= next != value;
+            if (next != value) {
+                if (values == null) {
+                    values = new Object[layout.accessors.length];
+                    for (int j = 0; j < values.length; j++) values[j] = layout.accessors[j].invoke(packet);
+                }
+                values[i] = next;
+            }
         }
-        return changed ? packet.getClass().getConstructor(types).newInstance(values) : packet;
+        return values == null ? packet : layout.constructor.newInstance(values);
     }
 
     private Object rewriteComponent(Object original, CommandClicks clicks) throws ReflectiveOperationException {
@@ -78,5 +107,25 @@ final class PaperPackets implements PacketAdapter {
     }
     @Override public void execute(ChannelHandlerContext context, String text) throws ReflectiveOperationException {
         context.fireChannelRead(command.newInstance(text));
+    }
+
+    @Override public void publish(ChannelHandlerContext context, CommandClicks clicks) throws ReflectiveOperationException {
+        for (var registration : clicks.drainExports()) {
+            Object payload = discardedPayload.newInstance(registrationId, RegistrationFrame.encode(registration));
+            context.write(customPayload.newInstance(payload));
+        }
+    }
+
+    @Override public int requestBytes(Object packet) throws ReflectiveOperationException {
+        if (!customClick.isInstance(packet)) return 0;
+        Optional<?> payload = (Optional<?>) clickPayload.invoke(packet);
+        // Native decoded packets no longer carry their wire buffer. Charge a conservative NBT size.
+        long bytes = 16L + clickId.invoke(packet).toString().length() * 2L;
+        if (payload.isPresent()) bytes += ((Number) tagSize.invoke(payload.get())).intValue();
+        return (int) Math.min(Integer.MAX_VALUE, bytes);
+    }
+
+    @Override public boolean account(ChannelHandlerContext context, Object packet, boolean commandWillRun) throws ReflectiveOperationException {
+        return budget.account(context, packet, commandWillRun);
     }
 }

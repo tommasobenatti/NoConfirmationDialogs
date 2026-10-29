@@ -32,8 +32,10 @@ def main():
     parser.add_argument('--node', required=True)
     args = parser.parse_args()
     base = args.work_dir.resolve()
-    jar = ROOT / 'target/NoConfirmationDialogs-0.1.0-SNAPSHOT.jar'
+    jar = ROOT / 'target/NoConfirmationDialogs-1.0-stable.jar'
     backend = base / 'runtime-1.21.6'
+    for old in (backend / 'plugins').glob('NoConfirmationDialogs-*.jar'):
+        if old.name != jar.name: old.unlink()
     shutil.copy2(jar, backend / 'plugins' / jar.name)
     processes = []
     results = []
@@ -64,6 +66,8 @@ def main():
         for name in ['velocity', 'bungee']:
             folder = base / ('network-' + name)
             plugins = folder / 'plugins'; plugins.mkdir(parents=True, exist_ok=True)
+            for old in plugins.glob('NoConfirmationDialogs-*.jar'):
+                if old.name != jar.name: old.unlink()
             shutil.copy2(jar, plugins / jar.name)
             cls = 'VelocityProbePlugin' if name == 'velocity' else 'BungeeProbePlugin'
             with zipfile.ZipFile(plugins / 'NcdProxyProbe.jar', 'w') as fixture:
@@ -120,6 +124,7 @@ servers:
             output = log.read_text()
             assert 'NCD_PROXY_COMMAND_EXECUTED' in output, str(log)
             assert 'NCD_PROXY_EVENT_CANCELLED' in output, str(log)
+            assert 'NCD_PROXY_BACKEND_EVENT_CANCELLED' in output, 'Non-system backend click skipped proxy policy'
             assert 'NCD_PROXY_EVENT ' + ('/' if name == 'bungee' else '') + 'ncdprobe' in output, 'Backend click skipped proxy event'
             assert 'Could not' not in output, output[-3000:]
             proxy.stdin.write('end\n' if name == 'bungee' else 'shutdown\n'); proxy.stdin.flush()
@@ -128,6 +133,7 @@ servers:
         output = backend_log.read_text()
         assert output.count('NCD_COMMAND_EXECUTED NcdProbe') == 3, 'Expected exactly one backend command per connection'
         assert 'NCD_PERMISSION_BYPASSED' not in output
+        assert output.count('NCD_STANDALONE_ALLOWED NcdProbe') == 1, 'Proxy denied backend command executed'
         assert 'Could not' not in output
         results.append({'platform': 'paper', 'passed': True, 'native_commands': 3, 'permissions_preserved': True, 'forged_payload_ignored': True})
         (base / 'network-results.json').write_text(json.dumps(results, indent=2) + '\n')

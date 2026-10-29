@@ -26,7 +26,10 @@ public final class BungeePlugin extends Plugin implements Listener {
         if (player.getPendingConnection().getVersion() < 771) return;
         try {
             Object wrapper = Reflect.call(player, "getCh");
-            channels.attach((Channel) Reflect.call(wrapper, "getHandle"), "inbound-boss", new BungeePackets(player), "proxy");
+            channels.attach((Channel) Reflect.call(wrapper, "getHandle"), "inbound-boss", new BungeePackets(player), "proxy", () -> {
+                try { return Reflect.call(wrapper, "getDecodeProtocol").toString().equals("GAME"); }
+                catch (ReflectiveOperationException ex) { return false; }
+            });
         } catch (ReflectiveOperationException | RuntimeException ex) {
             getLogger().log(Level.SEVERE, "Could not install command click handler", ex);
         }

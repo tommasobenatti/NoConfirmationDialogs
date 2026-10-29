@@ -33,7 +33,10 @@ public final class VelocityPlugin {
         if (player.getProtocolVersion().getProtocol() < 771 || channels == null) return;
         try {
             Object connection = Reflect.call(player, "getConnection");
-            channels.attach((Channel) Reflect.call(connection, "getChannel"), "handler", new VelocityPackets(player.getProtocolVersion()), "proxy");
+            channels.attach((Channel) Reflect.call(connection, "getChannel"), "handler", new VelocityPackets(player.getProtocolVersion()), "proxy", () -> {
+                try { return Reflect.call(connection, "getState").toString().equals("PLAY"); }
+                catch (ReflectiveOperationException ex) { return false; }
+            });
         } catch (ReflectiveOperationException | RuntimeException ex) {
             logger.error("Could not install command click handler", ex);
         }

@@ -1,0 +1,191 @@
+{
+  "date": "2026-10-29",
+  "environment": "Corretto OpenJDK 25.0.5, macOS arm64, three fresh JVMs each, sequential idle-host runs; -Xms128m -Xmx512m",
+  "scope": "Component registry microbenchmark only, not host serialization, server TPS, network latency or whole-heap retained size",
+  "baseline_sha256": "c15b0a67d58e2008bd9ad8ed3e3a1bbeba1b0ecbe556285e3b40154285e9bdaf",
+  "stable_sha256": "b9ff787c2cb54bd934746b8b3d077e4a52e1931a39535320c07bde1f4cc97bad",
+  "runs": {
+    "baseline": [
+      [
+        {
+          "metric": "plain_component",
+          "ns_per_op": 18.8,
+          "bytes_per_op": 32.0
+        },
+        {
+          "metric": "click_component",
+          "ns_per_op": 463.0,
+          "bytes_per_op": 1772.0
+        },
+        {
+          "metric": "invalid_token",
+          "ns_per_op": 26.1,
+          "bytes_per_op": 0.0
+        },
+        {
+          "metric": "retained_stress",
+          "entries": 4096,
+          "command_characters": 33594282,
+          "elapsed_ms": 36.76
+        }
+      ],
+      [
+        {
+          "metric": "plain_component",
+          "ns_per_op": 20.6,
+          "bytes_per_op": 32.0
+        },
+        {
+          "metric": "click_component",
+          "ns_per_op": 479.2,
+          "bytes_per_op": 1774.8
+        },
+        {
+          "metric": "invalid_token",
+          "ns_per_op": 26.3,
+          "bytes_per_op": 0.0
+        },
+        {
+          "metric": "retained_stress",
+          "entries": 4096,
+          "command_characters": 33594282,
+          "elapsed_ms": 36.24
+        }
+      ],
+      [
+        {
+          "metric": "plain_component",
+          "ns_per_op": 19.6,
+          "bytes_per_op": 32.0
+        },
+        {
+          "metric": "click_component",
+          "ns_per_op": 486.1,
+          "bytes_per_op": 1778.7
+        },
+        {
+          "metric": "invalid_token",
+          "ns_per_op": 26.8,
+          "bytes_per_op": 0.0
+        },
+        {
+          "metric": "retained_stress",
+          "entries": 4096,
+          "command_characters": 33594282,
+          "elapsed_ms": 38.14
+        }
+      ]
+    ],
+    "stable": [
+      [
+        {
+          "metric": "plain_component",
+          "ns_per_op": 19.7,
+          "bytes_per_op": 32.0
+        },
+        {
+          "metric": "click_component",
+          "ns_per_op": 266.2,
+          "bytes_per_op": 1131.6
+        },
+        {
+          "metric": "invalid_token",
+          "ns_per_op": 25.6,
+          "bytes_per_op": 0.0
+        },
+        {
+          "metric": "retained_stress",
+          "entries": 31,
+          "command_characters": 254262,
+          "elapsed_ms": 33.76
+        }
+      ],
+      [
+        {
+          "metric": "plain_component",
+          "ns_per_op": 20.3,
+          "bytes_per_op": 32.0
+        },
+        {
+          "metric": "click_component",
+          "ns_per_op": 279.6,
+          "bytes_per_op": 1133.9
+        },
+        {
+          "metric": "invalid_token",
+          "ns_per_op": 25.8,
+          "bytes_per_op": 0.0
+        },
+        {
+          "metric": "retained_stress",
+          "entries": 31,
+          "command_characters": 254262,
+          "elapsed_ms": 33.95
+        }
+      ],
+      [
+        {
+          "metric": "plain_component",
+          "ns_per_op": 19.8,
+          "bytes_per_op": 32.0
+        },
+        {
+          "metric": "click_component",
+          "ns_per_op": 284.1,
+          "bytes_per_op": 1135.9
+        },
+        {
+          "metric": "invalid_token",
+          "ns_per_op": 26.6,
+          "bytes_per_op": 0.0
+        },
+        {
+          "metric": "retained_stress",
+          "entries": 31,
+          "command_characters": 254262,
+          "elapsed_ms": 33.96
+        }
+      ]
+    ]
+  },
+  "median": {
+    "baseline": {
+      "plain_component": {
+        "ns_per_op": 19.6,
+        "bytes_per_op": 32.0
+      },
+      "click_component": {
+        "ns_per_op": 479.2,
+        "bytes_per_op": 1774.8
+      },
+      "invalid_token": {
+        "ns_per_op": 26.3,
+        "bytes_per_op": 0.0
+      },
+      "retained_stress": {
+        "entries": 4096,
+        "command_characters": 33594282,
+        "elapsed_ms": 36.76
+      }
+    },
+    "stable": {
+      "plain_component": {
+        "ns_per_op": 19.8,
+        "bytes_per_op": 32.0
+      },
+      "click_component": {
+        "ns_per_op": 279.6,
+        "bytes_per_op": 1133.9
+      },
+      "invalid_token": {
+        "ns_per_op": 25.8,
+        "bytes_per_op": 0.0
+      },
+      "retained_stress": {
+        "entries": 31,
+        "command_characters": 254262,
+        "elapsed_ms": 33.95
+      }
+    }
+  }
+}

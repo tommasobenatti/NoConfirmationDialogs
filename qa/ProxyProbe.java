@@ -23,9 +23,9 @@ public final class ProxyProbe {
     }
 
     private static void velocity(int protocolNumber) throws Exception {
-        var adapter = new VelocityPackets();
         Class<?> protocol = Class.forName("com.velocitypowered.api.network.ProtocolVersion");
         Object version = protocol.getMethod("getProtocolVersion", int.class).invoke(null, protocolNumber);
+        var adapter = new VelocityPackets(version);
         Class<?> holder = Class.forName("com.velocitypowered.proxy.protocol.packet.chat.ComponentHolder");
         Object content = holder.getConstructor(protocol, String.class).newInstance(version, JSON);
         Class<?> type = Class.forName("com.velocitypowered.proxy.protocol.packet.chat.ChatType");
@@ -52,7 +52,7 @@ public final class ProxyProbe {
         byte[] id = token.getBytes(StandardCharsets.UTF_8);
         int len = id.length;
         while ((len & ~127) != 0) { bytes.writeByte((len & 127) | 128); len >>>= 7; }
-        bytes.writeByte(len).writeBytes(id).writeByte(0);
+        bytes.writeByte(len).writeBytes(id).writeByte(1).writeByte(0);
         Object input = custom.getConstructor().newInstance();
         custom.getMethod("replace", io.netty.buffer.ByteBuf.class).invoke(input, bytes);
         channel.writeInbound(input);
@@ -62,17 +62,50 @@ public final class ProxyProbe {
         check(bytes.refCnt() == 0, "incoming buffer released");
         check(errors.isEmpty(), "no errors");
         channel.finishAndReleaseAll();
-        // Paper metadata is adopted at the proxy, so proxy command events still see backend clicks.
+        var rawClick = Unpooled.buffer(); rawClick.writeByte(protocolNumber >= 775 ? 0x44 : 0x41);
+        rawClick.writeByte(id.length).writeBytes(id).writeByte(1).writeByte(0);
+        check(adapter.clickId(rawClick).equals(token), "raw click uses actual client protocol");
+        check(rawClick.readerIndex() == 0, "raw click reader index preserved");
+        rawClick.release();
+        for (byte[] malformed : new byte[][]{new byte[]{(byte)0x80}, new byte[]{(byte)0xff,(byte)0xff,(byte)0xff,(byte)0xff,0x7f}, new byte[]{(byte)0x80,0}}) {
+            var bad = Unpooled.buffer(); bad.writeByte(protocolNumber >= 775 ? 0x44 : 0x41).writeBytes(malformed);
+            boolean rejected = false; try { adapter.clickId(bad); } catch (MalformedClickException expected) { rejected = true; }
+            check(rejected, "malformed VarInt rejected"); bad.release();
+        }
+        var livePaper = new CommandClicks(() -> 0, 100, 10000, "paper");
+        String liveToken = livePaper.register("must_pass_proxy_policy").orElseThrow();
+        check(clicks.importRegistration(livePaper.drainExports().getFirst()), "overlong test imports a backend alias");
+        check(clicks.resolve(liveToken).isPresent(), "overlong test starts with a valid capability");
+        byte[] liveId = liveToken.getBytes(StandardCharsets.UTF_8);
+        var overlong = Unpooled.buffer();
+        overlong.writeByte((protocolNumber >= 775 ? 0x44 : 0x41) | 128).writeByte(0);
+        overlong.writeByte(liveId.length).writeBytes(liveId).writeByte(1).writeByte(0);
+        var protectedChannel = new EmbeddedChannel(new ClickHandler(adapter, clicks, ex -> { throw new AssertionError(ex); }));
+        protectedChannel.writeInbound(overlong);
+        check(!protectedChannel.isActive(), "overlong packet ID cannot bypass proxy policy");
+        check(protectedChannel.readInbound() == null, "overlong packet never forwarded to backend");
+        check(overlong.refCnt() == 0, "malformed packet released");
+        protectedChannel.finishAndReleaseAll();
+        var alias = new CommandClicks(() -> 0, 100, 10000, "paper");
+        String aliasToken = alias.register("proxy_must_check").orElseThrow();
+        var registration = alias.drainExports().getFirst();
+        Class<?> plugin = Class.forName("com.velocitypowered.proxy.protocol.packet.PluginMessagePacket");
+        Object frame = plugin.getConstructor(String.class, io.netty.buffer.ByteBuf.class).newInstance(RegistrationFrame.CHANNEL, Unpooled.wrappedBuffer(RegistrationFrame.encode(registration)));
+        check(adapter.control(frame, clicks), "server registration accepted");
+        check(clicks.resolve(aliasToken).orElseThrow().equals("proxy_must_check"), "non-system paper alias resolved at proxy");
+        adapter.release(frame);
+        // Server-only registrations cover opaque chat; no client echo metadata is needed.
         var paper = new CommandClicks(() -> 0, 100, 10000, "paper");
         String paperJson = paper.rewrite(JsonParser.parseString(JSON)).toString();
         Object backend = packetType.getConstructor(holder, type).newInstance(holder.getConstructor(protocol, String.class).newInstance(version, paperJson), chatType);
-        check(adapter.rewrite(backend, clicks) != backend, "proxy adopts backend click");
+        paper.drainExports().forEach(exported -> check(clicks.importRegistration(exported), "paper alias imported"));
+        check(adapter.rewrite(backend, clicks) == backend, "already registered clicks need no second rewrite");
         var raw = Unpooled.buffer();
         raw.writeByte((int) Reflect.get(adapter, "systemChatId")); // 1.21.6 system chat packet ID
         Object direction = Class.forName("com.velocitypowered.proxy.protocol.ProtocolUtils$Direction").getField("CLIENTBOUND").get(null);
-        Reflect.method(packetType, "encode", 3).invoke(backend, raw, direction, version);
+        Reflect.method(packetType, "encode", 3).invoke(packet, raw, direction, version);
         int reader = raw.readerIndex();
-        check(adapter.rewrite(raw, clicks).getClass() == packetType, "raw backend system chat is decoded and adopted");
+        check(adapter.rewrite(raw, clicks).getClass() == packetType, "proxy-only raw backend run_command is converted");
         check(raw.readerIndex() == reader, "original raw buffer untouched");
         raw.release();
     }
@@ -98,6 +131,13 @@ public final class ProxyProbe {
         String token = event.get("id").getAsString();
         check(clicks.resolve(token).orElseThrow().equals("server lobby"), "exact proxy command");
         check(adapter.rewrite(next, clicks) == next, "idempotent");
+        var backendRegistry = new CommandClicks(() -> 0, 100, 10000, "paper");
+        String backendAlias = backendRegistry.register("proxy_must_check").orElseThrow();
+        byte[] registrationData = RegistrationFrame.encode(backendRegistry.drainExports().getFirst());
+        Class<?> pluginMessage = Class.forName("net.md_5.bungee.protocol.packet.PluginMessage");
+        Object registrationPacket = pluginMessage.getConstructor(String.class, byte[].class, boolean.class).newInstance(RegistrationFrame.CHANNEL, registrationData, false);
+        check(adapter.control(registrationPacket, clicks), "native Bungee registration imported");
+        check(clicks.resolve(backendAlias).orElseThrow().equals("proxy_must_check"), "non-system alias guarded by proxy");
         Class<?> custom = Class.forName("net.md_5.bungee.protocol.packet.CustomClickAction");
         Object click = custom.getConstructor().newInstance();
         custom.getMethod("setId", String.class).invoke(click, token);
@@ -117,6 +157,21 @@ public final class ProxyProbe {
         packetClass.getMethod("write", io.netty.buffer.ByteBuf.class, direction.getClass(), int.class).invoke(packet, raw, direction, protocolNumber);
         check(adapter.rewrite(raw, new CommandClicks(() -> 0, 100, 10000, "proxy")).getClass() == packetClass, "raw forwarded backend chat decoded");
         raw.release();
+        Class<?> bossClass = Class.forName("net.md_5.bungee.netty.HandlerBoss");
+        Object boss = bossClass.getConstructor().newInstance();
+        Class<?> limiterClass = Class.forName("net.md_5.bungee.util.PacketLimiter");
+        Object limiter = limiterClass.getConstructor(int.class, int.class).newInstance(1, 1048576);
+        bossClass.getMethod("setLimiter", limiterClass).invoke(boss, limiter);
+        var guarded = new EmbeddedChannel(new ClickHandler(adapter, new CommandClicks(() -> 0, 10, 1000, "proxy"), ex -> { throw new AssertionError(ex); }));
+        guarded.pipeline().addLast("inbound-boss", (io.netty.channel.ChannelHandler) boss);
+        for (int n = 0; n < 4; n++) {
+            Object unknown = custom.getConstructor().newInstance(); custom.getMethod("setId", String.class).invoke(unknown, "ncd:proxy/junk");
+            var data = Unpooled.buffer().writeByte(0);
+            Object wrapped = wrapperClass.getConstructor(defined, io.netty.buffer.ByteBuf.class, protocol).newInstance(unknown, data, protocol.getField("GAME").get(null));
+            guarded.writeInbound(wrapped); check(data.refCnt() == 0, "budgeted request released");
+        }
+        check(!guarded.isActive(), "strict native Bungee packet limit preserved for consumed junk");
+        guarded.finishAndReleaseAll();
     }
     private static void check(boolean value, String label) { if (!value) throw new AssertionError(label); assertions++; }
 }

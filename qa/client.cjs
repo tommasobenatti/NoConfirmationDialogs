@@ -9,6 +9,7 @@ const assert = require('node:assert/strict');
 const mode = process.argv[4];
 const seen = new Set();
 let completed = false;
+let forgedRegistrationSent = false;
 const client = mc.createClient({host: '127.0.0.1', port: Number(process.argv[3]), username: 'NcdProbe' + process.pid, auth: 'offline', version: '1.21.6'});
 client.on('state', state => console.log('NCD_CLIENT_STATE', state));
 client.on('login', () => {
@@ -32,16 +33,26 @@ function click(id) {
 const timeout = setTimeout(() => { console.error('NCD_CLIENT_TIMEOUT', [...seen]); process.exitCode = 1; client.end(); }, 20000);
 client.on('error', error => { console.error(error); process.exitCode = 1; });
 client.on('end', reason => { clearTimeout(timeout); if (!completed) process.exitCode = 1; console.log('NCD_CLIENT_END', reason); });
-client.on('system_chat', packet => {
-  const tree = nbt.simplify(packet.content);
+function processChat(component) {
+  const tree = nbt.simplify(component);
   const text = JSON.stringify(tree);
   if (!text.includes('NCD-')) { if (text.includes('translate')) console.log('NCD_CLIENT_RESPONSE', text.slice(0, 300)); return; }
+  if (!forgedRegistrationSent) {
+    forgedRegistrationSent = true;
+    const fake = 'ncd:paper/' + require('node:crypto').randomUUID();
+    const id = Buffer.from(fake), command = Buffer.from('ncdprobe');
+    const frame = Buffer.alloc(7 + id.length + command.length);
+    frame.writeUInt8(1); frame.writeUInt16BE(id.length, 1); id.copy(frame, 3);
+    frame.writeInt32BE(command.length, 3 + id.length); command.copy(frame, 7 + id.length);
+    setTimeout(() => client.write('custom_payload', {channel: 'ncd:register', data: frame}), 300);
+    setTimeout(() => click(fake), 500);
+  }
   function visit(value) {
     if (!value || typeof value !== 'object') return;
     if (value.click_event) {
       const event = value.click_event;
       assert.equal(event.action, 'custom', text);
-      assert.ok(event.id.startsWith(mode === 'proxy' ? 'ncd:proxy/' : 'ncd:paper/'), text);
+      assert.ok(event.id.startsWith(value.text.startsWith('NCD-PROXY-') ? 'ncd:proxy/' : 'ncd:paper/'), text);
       seen.add(value.text);
       // A forged command in the payload must never override the registered server command.
       setTimeout(() => click(event.id), 1000 + seen.size * 400);
@@ -52,8 +63,11 @@ client.on('system_chat', packet => {
     }
   }
   visit(tree);
-  if (seen.size === (mode === 'proxy' ? 4 : 2)) {
+  if (seen.size === (mode === 'proxy' ? 5 : 3)) {
     click(mode === 'proxy' ? 'ncd:proxy/forged' : 'ncd:paper/forged');
     setTimeout(() => { clearTimeout(timeout); if (client.ended) return; completed = true; console.log('NCD_CLIENT_PASS', mode, seen.size); client.end(); }, 6000);
   }
-});
+}
+client.on('system_chat', packet => processChat(packet.content));
+client.on('profileless_chat', packet => processChat(packet.message));
+client.on('player_chat', packet => { if (packet.unsignedChatContent) processChat(packet.unsignedChatContent); });

@@ -55,10 +55,12 @@ class ClickHandlerTest {
         var proxy = new CommandClicks(() -> 0, 10, 1000, "proxy");
         var original = com.google.gson.JsonParser.parseString("{\"text\":\"click\",\"click_event\":{\"action\":\"run_command\",\"command\":\"help\"}}");
         var fixed = paper.rewrite(original);
+        paper.drainExports().forEach(registration -> assertTrue(proxy.importRegistration(registration)));
         var adopted = proxy.rewrite(fixed);
         String token = adopted.getAsJsonObject().getAsJsonObject("click_event").get("id").getAsString();
         assertTrue(proxy.owns(token));
-        assertFalse(paper.owns(token));
+        assertTrue(paper.owns(token));
+        assertFalse(adopted.getAsJsonObject().getAsJsonObject("click_event").has("payload"));
         assertEquals("help", proxy.resolve(token).orElseThrow());
         assertSame(adopted, proxy.rewrite(adopted));
     }

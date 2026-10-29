@@ -33,6 +33,9 @@ public final class RuntimeProbe extends JavaPlugin implements Listener {
         getCommand("ncdrestricted").setExecutor((sender, command, label, args) -> {
             getLogger().severe("NCD_PERMISSION_BYPASSED"); return true;
         });
+        getCommand("ncdbackendblocked").setExecutor((sender, command, label, args) -> {
+            getLogger().info("NCD_STANDALONE_ALLOWED " + sender.getName()); return true;
+        });
         getServer().getScheduler().runTask(this, () -> {
             try { probe(); getLogger().info("NCD_RUNTIME_PASS assertions=" + assertions); }
             catch (Throwable ex) { getLogger().log(java.util.logging.Level.SEVERE, "NCD_RUNTIME_FAIL", ex); }
@@ -55,6 +58,8 @@ public final class RuntimeProbe extends JavaPlugin implements Listener {
         }, 30);
         event.getPlayer().sendMessage(Component.text("NCD-NATIVE-CLICK").clickEvent(ClickEvent.runCommand("/ncdprobe")));
         event.getPlayer().sendMessage(Component.text("NCD-NATIVE-DENIED").clickEvent(ClickEvent.runCommand("/ncdrestricted")));
+        event.getPlayer().sendMessage(Component.text("NCD-BACKEND-BLOCK").clickEvent(ClickEvent.runCommand("/ncdbackendblocked")),
+                net.kyori.adventure.chat.ChatType.CHAT.bind(Component.text("NCD-QA")));
     }
 
     private void probe() throws Exception {
@@ -112,17 +117,53 @@ public final class RuntimeProbe extends JavaPlugin implements Listener {
         Object handler = construct(handlerClass, new Class<?>[]{interfaceClass, registryClass, Consumer.class}, adapter, registry, (Consumer<Exception>) errors::add);
         EmbeddedChannel channel = new EmbeddedChannel((ChannelHandler) handler);
         channel.writeOutbound(packet);
-        check(channel.readOutbound() != packet, "outbound pipeline");
+        Object output = channel.readOutbound(); int registrations = 0;
+        while (output != null && output.getClass().getSimpleName().equals("ClientboundCustomPayloadPacket")) {
+            Object payload = output.getClass().getMethod("payload").invoke(output);
+            check(payload.getClass().getMethod("id").invoke(payload).toString().equals("ncd:register"), "native registration channel");
+            registrations++; output = channel.readOutbound();
+        }
+        check(registrations > 0, "all backend tokens registered before chat");
+        check(output != null && output.getClass() == packet.getClass(), "outbound pipeline");
         Class<?> clickClass = Class.forName("net.minecraft.network.protocol.common.ServerboundCustomClickActionPacket");
         Class<?> identifier = clickClass.getRecordComponents()[0].getType();
         Object id = identifier.getMethod("parse", String.class).invoke(null, token);
         Object click = clickClass.getConstructors()[0].newInstance(id, Optional.empty());
+        check((int) invoke(adapter, "requestBytes", new Class<?>[]{Object.class}, click) > 0, "decoded request budget");
         channel.writeInbound(click);
         Object command = channel.readInbound();
         check(command != null && command.getClass().getSimpleName().equals("ServerboundChatCommandPacket"), "normal native command route");
         check(command.getClass().getMethod("command").invoke(command).equals("huskhomes:tpaccept Alice"), "normal command unchanged");
         check(errors.isEmpty(), "no transport errors");
         channel.finishAndReleaseAll();
+        // Consumed custom clicks must respect a stricter native per-packet DROP policy.
+        Class<?> config = Class.forName("io.papermc.paper.configuration.GlobalConfiguration");
+        Object limits = config.getMethod("get").invoke(null).getClass().getField("packetLimiter").get(config.getMethod("get").invoke(null));
+        var overrideField = limits.getClass().getField("overrides");
+        Object originalOverrides = overrideField.get(limits);
+        Class<?> limitType = Class.forName("io.papermc.paper.configuration.GlobalConfiguration$PacketLimiter$PacketLimit");
+        Class<?> actionType = Class.forName(limitType.getName() + "$ViolateAction");
+        Object drop = actionType.getField("DROP").get(null);
+        Object strict = limitType.getConstructor(double.class, double.class, actionType).newInstance(1.0, 1.0, drop);
+        java.util.Map<Object, Object> overrides = new java.util.HashMap<>(); overrides.put(clickClass, strict);
+        Class<?> connectionType = Class.forName("net.minecraft.network.Connection");
+        Class<?> flow = Class.forName("net.minecraft.network.protocol.PacketFlow");
+        Object connection = connectionType.getConstructor(flow).newInstance(flow.getField("SERVERBOUND").get(null));
+        EmbeddedChannel guarded = new EmbeddedChannel(new io.netty.channel.ChannelInboundHandlerAdapter());
+        guarded.pipeline().addLast("packet_handler", (ChannelHandler) connection);
+        try {
+            overrideField.set(limits, overrides);
+            Method account = adapterClass.getDeclaredMethod("account", io.netty.channel.ChannelHandlerContext.class, Object.class, boolean.class); account.setAccessible(true);
+            check(!(boolean) account.invoke(adapter, guarded.pipeline().firstContext(), click, true), "native custom-click DROP policy preserved");
+            check(guarded.isActive(), "native DROP does not become a disconnect");
+            var counts = connectionType.getDeclaredField("allPacketCounts"); counts.setAccessible(true);
+            Object globalCount = counts.get(connection);
+            check(globalCount != null && ((Number) globalCount.getClass().getMethod("getSum").invoke(globalCount)).longValue() == 1,
+                    "dropped valid token still charged to native global counter");
+        } finally {
+            overrideField.set(limits, originalOverrides);
+            guarded.pipeline().remove("packet_handler"); guarded.finishAndReleaseAll();
+        }
     }
 
     private void check(boolean result, String label) { if (!result) throw new AssertionError(label); assertions++; }

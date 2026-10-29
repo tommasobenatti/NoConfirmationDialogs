@@ -5,11 +5,16 @@ import com.google.gson.JsonObject;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.List;
+import java.util.ArrayList;
+import java.util.ArrayDeque;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.function.LongSupplier;
 
 final class CommandClicks {
+    static final int MAX_CHARACTERS = 262144;
+    record Registration(String token, String command) { }
     private record Entry(String command, long created) { }
     private final LongSupplier clock;
     private final int capacity;
@@ -17,8 +22,13 @@ final class CommandClicks {
     private final String prefix;
     private final Map<String, Entry> entries = new LinkedHashMap<>();
     private final Map<String, String> commands = new HashMap<>();
+    private final Map<String, String> exports = new LinkedHashMap<>();
+    private int retainedCharacters;
     private long window;
     private int clicks;
+    private long requestWindow;
+    private int requests;
+    private int requestBytes;
 
     CommandClicks(LongSupplier clock, int capacity, long lifetime) {
         this(clock, capacity, lifetime, "run");
@@ -31,25 +41,73 @@ final class CommandClicks {
         this.lifetime = lifetime;
         this.prefix = "ncd:" + scope + "/";
         this.window = clock.getAsLong();
+        this.requestWindow = window;
     }
 
     // All registry access is synchronized: packet writes can originate outside the event loop.
     synchronized Optional<String> register(String command) {
+        if (command == null) return Optional.empty();
         if (command.startsWith("/")) command = command.substring(1);
-        if (command.isBlank() || command.length() > 32767
-                || command.chars().anyMatch(c -> c < 32 || c == 127 || c == 167)) return Optional.empty();
+        if (!validCommand(command)) return Optional.empty();
         long now = clock.getAsLong();
         String existing = commands.get(command);
-        if (existing != null && now - entries.get(existing).created < lifetime) return Optional.of(existing);
-        if (existing != null) remove(existing);
-        while (!entries.isEmpty() && (entries.size() >= capacity
-                || now - entries.values().iterator().next().created >= lifetime)) {
-            remove(entries.keySet().iterator().next());
+        Entry retained = existing == null ? null : entries.get(existing);
+        if (retained != null && now - retained.created < lifetime) {
+            if (prefix.equals("ncd:paper/")) exports.put(existing, retained.command);
+            return Optional.of(existing);
         }
+        if (existing != null) remove(existing);
+        makeRoom(command.length(), now);
         String token = prefix + UUID.randomUUID();
         entries.put(token, new Entry(command, now));
         commands.put(command, token);
+        retainedCharacters += command.length();
+        if (prefix.equals("ncd:paper/")) exports.put(token, command);
         return Optional.of(token);
+    }
+
+    synchronized boolean importRegistration(Registration registration) {
+        if (!prefix.equals("ncd:proxy/") || !paperToken(registration.token()) || !validCommand(registration.command())) return false;
+        Entry old = entries.get(registration.token());
+        long now = clock.getAsLong();
+        if (old != null && now - old.created < lifetime) return old.command.equals(registration.command());
+        if (old != null) remove(registration.token());
+        makeRoom(registration.command().length(), now);
+        entries.put(registration.token(), new Entry(registration.command(), now));
+        retainedCharacters += registration.command().length();
+        return true;
+    }
+
+    synchronized List<Registration> drainExports() {
+        if (exports.isEmpty()) return List.of();
+        List<Registration> result = new ArrayList<>(exports.size());
+        exports.forEach((token, command) -> result.add(new Registration(token, command)));
+        exports.clear();
+        return result;
+    }
+
+    private void makeRoom(int characters, long now) {
+        while (!entries.isEmpty() && (entries.size() >= capacity || retainedCharacters + characters > MAX_CHARACTERS
+                || now - entries.values().iterator().next().created >= lifetime)) remove(entries.keySet().iterator().next());
+    }
+
+    private static boolean validCommand(String command) {
+        return command != null && !command.isBlank() && command.length() <= 32767
+                && command.codePoints().noneMatch(c -> c < 32 || c == 127 || c == 167 || (c >= 0xd800 && c <= 0xdfff));
+    }
+
+    static boolean paperToken(String token) {
+        if (token == null || !token.startsWith("ncd:paper/") || token.length() != 46) return false;
+        try { return UUID.fromString(token.substring(10)).toString().equals(token.substring(10)); }
+        catch (IllegalArgumentException ex) { return false; }
+    }
+
+    synchronized boolean acceptRequest(int bytes) {
+        long now = clock.getAsLong();
+        if (now - requestWindow >= 1000) { requestWindow = now; requests = 0; requestBytes = 0; }
+        if (bytes < 0 || bytes > 1048576 - requestBytes) return false;
+        requestBytes += bytes;
+        return ++requests <= 100;
     }
 
     synchronized Optional<String> resolve(String token) {
@@ -66,15 +124,46 @@ final class CommandClicks {
         return Optional.of(entry.command);
     }
 
-    boolean owns(String token) { return token.startsWith(prefix); }
-    synchronized void clear() { entries.clear(); commands.clear(); clicks = 0; }
+    boolean owns(String token) { return token.startsWith(prefix) || (prefix.equals("ncd:proxy/") && token.startsWith("ncd:paper/")); }
+    synchronized void clear() { entries.clear(); commands.clear(); exports.clear(); retainedCharacters = 0; clicks = 0; }
     synchronized int size() { return entries.size(); }
-    private void remove(String token) { commands.remove(entries.remove(token).command); }
+    private void remove(String token) {
+        Entry entry = entries.remove(token);
+        retainedCharacters -= entry.command.length();
+        commands.remove(entry.command, token);
+        exports.remove(token);
+    }
 
     JsonElement rewrite(JsonElement source) {
         if (!hasCommand(source, 0)) return source;
+        if (!withinBudget(source)) return source;
         JsonElement copy = source.deepCopy();
         return rewriteInPlace(copy, 0) ? copy : source;
+    }
+
+    private record Node(JsonElement value, int depth) { }
+    private boolean withinBudget(JsonElement source) {
+        ArrayDeque<Node> work = new ArrayDeque<>(); work.push(new Node(source, 0));
+        int nodes = 0, characters = 0;
+        while (!work.isEmpty()) {
+            Node node = work.pop();
+            if (++nodes > 8192 || node.depth > 64) return false;
+            JsonElement value = node.value;
+            if (value.isJsonObject()) {
+                for (var field : value.getAsJsonObject().entrySet()) {
+                    characters += field.getKey().length();
+                    work.push(new Node(field.getValue(), node.depth + 1));
+                    if (work.size() > 8192) return false;
+                }
+            } else if (value.isJsonArray()) {
+                for (var child : value.getAsJsonArray()) {
+                    work.push(new Node(child, node.depth + 1));
+                    if (work.size() > 8192) return false;
+                }
+            } else if (isString(value)) characters += value.getAsString().length();
+            if (characters > MAX_CHARACTERS) return false;
+        }
+        return true;
     }
 
     private boolean hasCommand(JsonElement value, int depth) {
@@ -102,11 +191,8 @@ final class CommandClicks {
                     JsonObject replacement = new JsonObject();
                     replacement.addProperty("action", "custom");
                     replacement.addProperty("id", token.get());
-                    // The proxy learns the command from the server-authored outbound message only.
-                    // Inbound payloads are never consulted when executing a click.
-                    JsonObject metadata = new JsonObject();
-                    metadata.addProperty("ncd_command", command.get());
-                    replacement.addProperty("payload", metadata.toString());
+                    // Commands travel only over the directional server registration channel.
+                    // The client receives an identifier with no command-sized echo payload.
                     object.add("click_event", replacement);
                     changed = true;
                 }
@@ -124,19 +210,6 @@ final class CommandClicks {
         JsonElement action = object.get("action"), command = object.get("command");
         if (action == null || !action.isJsonPrimitive() || !action.getAsJsonPrimitive().isString()) return Optional.empty();
         if (action.getAsString().equals("run_command") && isString(command)) return Optional.of(command.getAsString());
-        if (prefix.equals("ncd:proxy/") && action.getAsString().equals("custom")
-                && isString(object.get("id")) && object.get("id").getAsString().startsWith("ncd:paper/")
-                && isString(object.get("payload"))) {
-            try {
-                // JSON is a subset of SNBT. Native serializers can remove quotes from SNBT keys;
-                // Gson's lenient tree parser accepts both representations used here.
-                JsonElement payload = com.google.gson.JsonParser.parseString(object.get("payload").getAsString());
-                if (payload.isJsonObject()) {
-                    JsonElement metadata = payload.getAsJsonObject().get("ncd_command");
-                    if (isString(metadata)) return Optional.of(metadata.getAsString());
-                }
-            } catch (com.google.gson.JsonParseException ignored) { /* Leave foreign payloads unchanged. */ }
-        }
         return Optional.empty();
     }
 

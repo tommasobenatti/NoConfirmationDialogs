@@ -18,7 +18,7 @@ def main():
     shutil.copytree(target / 'classes', classes, dirs_exist_ok=True)
     # These platform-only classes are transformed by their host before JaCoCo sees them.
     # Use the exact dumped runtime bytes, preserving the original source line mapping.
-    for platform, names in [('runtime-1.21.6', ['NcdPlugin', 'PaperPackets']), ('network-bungee', ['BungeePlugin', 'BungeePackets'])]:
+    for platform, names in [('runtime-1.21.6', ['NcdPlugin', 'PaperPackets', 'PaperPackets$Layout', 'PaperBudget']), ('network-bungee', ['BungeePlugin', 'BungeePackets'])]:
         for name in names:
             candidates = list((target / 'runtime-dump' / platform / 'io/github/tommasobenatti/ncd').glob(name + '.*.class'))
             latest = max(candidates, key=lambda path: path.stat().st_mtime)

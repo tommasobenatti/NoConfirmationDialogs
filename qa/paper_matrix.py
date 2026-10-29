@@ -43,7 +43,9 @@ def run(version, base, index):
         raise ValueError('Paper checksum mismatch: ' + version)
     plugins = folder / 'plugins'
     plugins.mkdir(exist_ok=True)
-    shutil.copy2(ROOT / 'target/NoConfirmationDialogs-0.1.0-SNAPSHOT.jar', plugins)
+    for old in plugins.glob('NoConfirmationDialogs-*.jar'):
+        if old.name != 'NoConfirmationDialogs-1.0-stable.jar': old.unlink()
+    shutil.copy2(ROOT / 'target/NoConfirmationDialogs-1.0-stable.jar', plugins)
     with zipfile.ZipFile(plugins / 'NcdRuntimeProbe.jar', 'w') as jar:
         cls = ROOT / 'target/test-classes/io/github/tommasobenatti/ncd/RuntimeProbe.class'
         jar.write(cls, 'io/github/tommasobenatti/ncd/RuntimeProbe.class')
@@ -54,6 +56,7 @@ api-version: '1.21.6'
 depend: [NoConfirmationDialogs]
 commands:
   ncdprobe: {}
+  ncdbackendblocked: {}
   ncdrestricted:
     permission: ncd.qa.restricted
 permissions:
@@ -83,7 +86,7 @@ enable-status=false
     output = log.read_text()
     match = re.search(r'NCD_RUNTIME_PASS assertions=(\d+)', output)
     passed = proc.returncode == 0 and bool(match) and 'NCD_RUNTIME_FAIL' not in output and 'Could not' not in output
-    plugin_sha = hashlib.sha256((plugins / 'NoConfirmationDialogs-0.1.0-SNAPSHOT.jar').read_bytes()).hexdigest()
+    plugin_sha = hashlib.sha256((plugins / 'NoConfirmationDialogs-1.0-stable.jar').read_bytes()).hexdigest()
     return {'version': version, 'build': metadata['id'], 'sha256': digest, 'candidate_sha256': plugin_sha, 'passed': passed, 'assertions': int(match[1]) if match else 0, 'exit_code': proc.returncode}
 
 

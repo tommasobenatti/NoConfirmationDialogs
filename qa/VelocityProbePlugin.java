@@ -23,9 +23,10 @@ public final class VelocityProbePlugin {
     }
     @Subscribe public void command(CommandExecuteEvent event) {
         logger.info("NCD_PROXY_EVENT " + event.getCommand());
-        if (event.getCommand().equals("ncdblocked")) {
+        if (event.getCommand().equals("ncdblocked") || event.getCommand().equals("ncdbackendblocked")) {
             event.setResult(CommandExecuteEvent.CommandResult.denied());
             logger.info("NCD_PROXY_EVENT_CANCELLED");
+            if (event.getCommand().equals("ncdbackendblocked")) logger.info("NCD_PROXY_BACKEND_EVENT_CANCELLED");
         }
     }
 }

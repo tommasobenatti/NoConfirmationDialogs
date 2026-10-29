@@ -2,10 +2,11 @@
   <modelVersion>4.0.0</modelVersion>
   <groupId>io.github.tommasobenatti</groupId>
   <artifactId>NoConfirmationDialogs</artifactId>
-  <version>0.1.0-SNAPSHOT</version>
+  <version>1.0-stable</version>
   <name>NCD — No Confirmation Dialogs</name>
   <description>Automatic, dependency-free command click conversion for Paper.</description>
   <url>https://github.com/tommasobenatti/NoConfirmationDialogs</url>
+  <developers><developer><id>tommasobenatti</id><name>Tommaso Benatti</name><url>https://github.com/tommasobenatti</url></developer></developers>
   <licenses><license><name>MIT License</name><url>https://opensource.org/license/mit</url></license></licenses>
   <properties>
     <maven.compiler.release>21</maven.compiler.release>

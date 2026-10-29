@@ -42,7 +42,11 @@ public final class NcdPlugin extends JavaPlugin implements Listener {
                 int protocol = (int) api.getClass().getMethod("getPlayerVersion", java.util.UUID.class).invoke(api, player.getUniqueId());
                 if (protocol < 771) return;
             }
-            channels.attach(channel, "packet_handler", packets, "paper");
+            Class<?> playListener = Class.forName("net.minecraft.server.network.ServerGamePacketListenerImpl");
+            channels.attach(channel, "packet_handler", packets, "paper", () -> {
+                try { return playListener.isInstance(Reflect.call(connection, "getPacketListener")); }
+                catch (ReflectiveOperationException ex) { return false; }
+            });
         } catch (ReflectiveOperationException | RuntimeException ex) {
             getLogger().log(Level.SEVERE, "Could not install command click handler", ex);
         }

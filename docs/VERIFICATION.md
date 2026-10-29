@@ -1,41 +1,37 @@
-# Verification — testing candidate
+# Verification — 1.0-stable
 
-Date: 2026-10-29. Version: `0.1.0-SNAPSHOT`. No GitHub release or tag has been published.
-
-## Results
+Date: 2026-10-29. Maintainer: [Tommaso Benatti](https://github.com/tommasobenatti). SHA-256: `b9ff787c2cb54bd934746b8b3d077e4a52e1931a39535320c07bde1f4cc97bad`.
 
 | Check | Result |
 | --- | --- |
-| Maven compile, package and tests on Java 21 | PASS |
-| JUnit behavior tests | 8 passed, 0 failed, 0 skipped |
-| Paper native runtime probes | 10/10 released versions, 22 assertions each |
-| Leaf 26.3 build 13 | PASS, 22 assertions |
-| Velocity 4.3.1 native proxy probes | PASS, 84 assertions across protocols 771–777 |
-| BungeeCord build 2107 native proxy probes | PASS, 56 assertions across protocols 771–777 |
-| Older Velocity releases | 3.4.0, 3.5.1 and 4.0.0 passed their supported protocol probes |
-| Loopback client → Paper | PASS |
-| Loopback client → Velocity → Paper | PASS |
-| Loopback client → BungeeCord → Paper | PASS |
-| Production source lines executed, including host-remapped adapters | 339/367, 92.4% |
-| Production branches executed | 199/268, 74.3% |
-| Whitespace/diff and public-content review | PASS |
+| Java 21 build and JUnit | 24 passed; no failed, errored or skipped tests |
+| Paper native runtime probes | 10/10 supported released versions; 29 assertions per version |
+| Leaf 26.3 build 13 | 29 assertions passed |
+| Velocity 4.3.1 native protocol probes | 175 assertions; actual protocols 771–777 |
+| BungeeCord build 2107 native protocol probes | 105 assertions; actual protocols 771–777 |
+| Older Velocity | 3.4.0, 3.5.1 and 4.0.0 passed their supported protocol probes |
+| Direct client → Paper | PASS |
+| Client → Velocity → Paper | PASS |
+| Client → BungeeCord → Paper | PASS |
+| Source lines executed, including actual host-remapped adapters | 571/609, 93.8% |
+| Branches executed | 370/512, 72.3% |
 
-Paper builds: 1.21.6 #48; 1.21.7 #32; 1.21.8 #60; 1.21.9 #59; 1.21.10 #130; 1.21.11 #132; 26.1.1 #29; 26.1.2 #74; 26.2 #135; 26.3 #229. Runtime probes use Java 25. Proxy protocol probes use the actual distribution JARs and native codecs, not replicas of their classes.
+Paper builds: 1.21.6 #48; 1.21.7 #32; 1.21.8 #60; 1.21.9 #59; 1.21.10 #130; 1.21.11 #132; 26.1.1 #29; 26.1.2 #74; 26.2 #135; 26.3 #229. Java 25 runs the isolated native hosts. [Machine-readable results](test-results.json) retain distribution and plugin hashes.
 
-Machine-readable distribution hashes and candidate hashes are in [test-results.json](test-results.json).
+## What was verified
 
-## Behavioral evidence
+The real loopback client receives existing chat actions, sends a manipulated command payload, forges a registration message for an otherwise permitted command and clicks its fake token. These inputs do not nominate a command. Exactly one legitimate backend command executes on each connection; permissions still reject a restricted command.
 
-The network fixture sends real chat packets from both a backend and proxy. A synthetic Minecraft 1.21.6 client receives native `custom` actions, clicks them, and checks the resulting server behavior. Exactly one permitted backend command runs on each of three independent connections. The backend permission denial remains effective, proxy command events see backend clicks, a proxy command runs locally, and a proxy event cancellation is respected. Fake identifiers and an incoming payload naming a different command do not execute that command.
+A disguised-chat command is permitted by the standalone backend but denied by each proxy. With both layers installed it passes through native proxy command events and never executes at the backend. Proxy-created commands execute normally and cancelled events remain cancelled.
 
-Packet probes cover system chat, disguised chat, unsigned display components on signed player chat, Adventure messages, bundle contents, nested click events, preservation of original packet fields, immutable source objects, and native serialization. Token tests cover isolation between connections, expiry, bounded storage, deduplication and rate limiting. Native proxy probes additionally cover forwarded raw chat buffers and buffer release.
+Native probes use each actual protocol object, both raw and decoded traffic, native codecs and retained buffers. They cover 0x41/0x44 packet IDs, malformed/overflowing/overlong VarInts, a live backend alias behind an overlong packet ID, control-frame imports, reader-index preservation and release. Bungee probes preserve a stricter native packet limit for junk tokens. Paper probes preserve a configured custom-click DROP policy, keep the client connected for DROP and charge its global counter exactly once.
 
-The initial failing tests used inert implementations of the registry, then passed after implementation. A separate failing proxy-adoption test required backend buttons to pass through proxy command events; it passed after adoption metadata was added. Network tests caught encode-only/raw packet handling in both proxy implementations before the candidate was finalized.
+Unit regressions cover cross-session tokens, expiry, aggregate text bounds, malformed registrations, independent alias eviction, phase changes, request count/data budgets, deep/oversized trees, concurrent attach/disable, close-listener cleanup and 200 lifecycle cycles. Maximum-length commands do not create a client echo payload.
 
-Coverage combines unit tests, real distribution probes and actual network sessions. Paper/Bungee runtime remapping changes class IDs; the report uses the exact executed bytes for their platform adapters, retaining source line mappings. The original-only Maven report therefore understates native coverage; see `qa/native_coverage.py`.
+Paper probes preserve packet fields and cover system chat, disguised chat, unsigned display content on player-chat packets, Adventure components, bundles and registration-before-chat ordering. Signed message bodies and signatures are preserved; this is not a cryptographic validation of every signed-chat scenario.
 
-## Remaining acceptance test and scope
+## Coverage and limits
 
-No Minecraft rendering/UI automation or test on the production network is claimed. The maintainer must personally test the original HuskHomes button, proxy messages, backend switching/reconnecting, permission denial and unchanged URL/suggest actions before approving a release. Multi-proxy deployments use independent local registries; no shared database is involved, but a live multi-proxy failover was not exercised.
+Paper/Bungee remap classes before loading, changing their JaCoCo IDs. The report uses exact dumped runtime bytes for platform-only adapters with original source line mappings; shared classes use their normal build bytes. See `qa/native_coverage.py`. This is test coverage, not a security guarantee.
 
-The candidate targets command clicks in chat. Written books, arbitrary modal dialog definitions, Spigot-only servers, Folia, future protocols, every possible third-party plugin combination, and cross-machine protocol translation configurations are not part of the verified scope.
+[Audit and performance details](AUDIT.md), [raw performance data](performance-results.json), and [reproduction commands](../qa/README.md) document limits. No server TPS, service-outage threshold, full GUI rendering matrix, production deployment, live multi-proxy failover or every third-party/translator combination is claimed. The maintainer personally confirmed the original chat behavior in-game and explicitly authorized stable publication after this audit.

@@ -19,6 +19,10 @@ final class BungeePackets implements PacketAdapter {
     private final Object direction;
     private final int protocol;
     private final int systemChatId;
+    private final Class<?> pluginMessage = Class.forName(PREFIX + "packet.PluginMessage");
+    private final int pluginMessageId;
+    private final java.lang.reflect.Field nativeLimiter;
+    private final Method incrementLimiter;
 
     BungeePackets(ProxiedPlayer player) throws ReflectiveOperationException {
         this.player = player;
@@ -32,7 +36,16 @@ final class BungeePackets implements PacketAdapter {
         Method getId = outbound.getClass().getDeclaredMethod("getId", Class.class, int.class);
         getId.setAccessible(true);
         systemChatId = (int) getId.invoke(outbound, systemChat, protocol);
+        pluginMessageId = (int) getId.invoke(outbound, pluginMessage, protocol);
         direction = Class.forName(PREFIX + "ProtocolConstants$Direction").getField("TO_CLIENT").get(null);
+        java.lang.reflect.Field limiter = null; Method increment = null;
+        try {
+            limiter = Reflect.field(Class.forName("net.md_5.bungee.netty.HandlerBoss"), "limiter");
+            increment = limiter.getType().getMethod("incrementAndCheck", int.class);
+        } catch (ClassNotFoundException | NoSuchFieldException | NoSuchMethodException ignored) {
+            // Older hosts have no generic limiter; the independent NCD limits still apply.
+        }
+        nativeLimiter = limiter; incrementLimiter = increment;
     }
 
     private Object unwrap(Object packet) throws ReflectiveOperationException {
@@ -42,7 +55,9 @@ final class BungeePackets implements PacketAdapter {
     @Override public Object rewrite(Object original, CommandClicks clicks) throws ReflectiveOperationException {
         Object packet = unwrap(original);
         if (original instanceof ByteBuf || (packet == null && original.getClass().getName().equals(PREFIX + "PacketWrapper"))) {
-            ByteBuf raw = (original instanceof ByteBuf buffer ? buffer : (ByteBuf) Reflect.get(original, "buf")).duplicate();
+            ByteBuf raw = original instanceof ByteBuf buffer ? buffer : (ByteBuf) Reflect.get(original, "buf");
+            if (!raw.isReadable() || raw.getUnsignedByte(raw.readerIndex()) != systemChatId) return original;
+            raw = raw.duplicate();
             int id = (int) Class.forName(PREFIX + "DefinedPacket").getMethod("readVarInt", ByteBuf.class).invoke(null, raw);
             if (id != systemChatId) return original;
             packet = systemChat.getConstructor().newInstance();
@@ -76,10 +91,41 @@ final class BungeePackets implements PacketAdapter {
         Reflect.method(channel.getClass(), "write", 1).invoke(channel, commandClass.getConstructor(String.class).newInstance(command));
     }
 
+    @Override public boolean control(Object original, CommandClicks clicks) throws ReflectiveOperationException {
+        Object packet = unwrap(original);
+        if (original instanceof ByteBuf || (packet == null && original.getClass().getName().equals(PREFIX + "PacketWrapper"))) {
+            ByteBuf input = (original instanceof ByteBuf raw ? raw : (ByteBuf) Reflect.get(original, "buf")).duplicate();
+            if (!input.isReadable() || input.getUnsignedByte(input.readerIndex()) != pluginMessageId) return false;
+            int id = (int) Class.forName(PREFIX + "DefinedPacket").getMethod("readVarInt", ByteBuf.class).invoke(null, input);
+            if (id != pluginMessageId) return false;
+            packet = pluginMessage.getConstructor().newInstance();
+            pluginMessage.getMethod("read", ByteBuf.class, direction.getClass(), int.class).invoke(packet, input, direction, protocol);
+        }
+        if (packet == null || !pluginMessage.isInstance(packet) || !RegistrationFrame.CHANNEL.equals(Reflect.call(packet, "getTag"))) return false;
+        byte[] data = (byte[]) Reflect.call(packet, "getData");
+        if (!clicks.importRegistration(RegistrationFrame.decode(data))) throw new IllegalArgumentException("Invalid registration");
+        return true;
+    }
+
     @Override public void release(Object packet) {
         if (packet.getClass().getName().equals(PREFIX + "PacketWrapper")) {
             try { Reflect.call(packet, "trySingleRelease"); }
             catch (ReflectiveOperationException ex) { throw new IllegalStateException("Could not release packet", ex); }
         } else PacketAdapter.super.release(packet);
+    }
+
+    @Override public int requestBytes(Object packet) throws ReflectiveOperationException {
+        return packet.getClass().getName().equals(PREFIX + "PacketWrapper")
+                ? ((ByteBuf) Reflect.get(packet, "buf")).readableBytes() : PacketAdapter.super.requestBytes(packet);
+    }
+
+    @Override public boolean account(ChannelHandlerContext context, Object packet) throws ReflectiveOperationException {
+        if (nativeLimiter == null || incrementLimiter == null) return true;
+        Object boss = context.pipeline().get("inbound-boss");
+        if (boss == null) return true;
+        Object limiter = nativeLimiter.get(boss);
+        boolean allowed = limiter == null || (boolean) incrementLimiter.invoke(limiter, requestBytes(packet));
+        if (!allowed) context.close();
+        return allowed;
     }
 }

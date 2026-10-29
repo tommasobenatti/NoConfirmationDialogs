@@ -27,9 +27,10 @@ public final class BungeeProbePlugin extends Plugin implements Listener {
     }
     @EventHandler public void command(ChatEvent event) {
         getLogger().info("NCD_PROXY_EVENT " + event.getMessage());
-        if (event.getMessage().equals("/ncdblocked")) {
+        if (event.getMessage().equals("/ncdblocked") || event.getMessage().equals("/ncdbackendblocked")) {
             event.setCancelled(true);
             getLogger().info("NCD_PROXY_EVENT_CANCELLED");
+            if (event.getMessage().equals("/ncdbackendblocked")) getLogger().info("NCD_PROXY_BACKEND_EVENT_CANCELLED");
         }
     }
 }
