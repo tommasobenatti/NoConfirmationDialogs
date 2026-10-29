@@ -1,0 +1,5 @@
+name: NoConfirmationDialogs
+version: '${project.version}'
+main: io.github.tommasobenatti.ncd.BungeePlugin
+author: tommasobenatti
+description: Automatic command click conversion

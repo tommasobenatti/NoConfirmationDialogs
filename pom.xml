@@ -1,0 +1,49 @@
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <groupId>io.github.tommasobenatti</groupId>
+  <artifactId>NoConfirmationDialogs</artifactId>
+  <version>0.1.0-SNAPSHOT</version>
+  <name>NCD — No Confirmation Dialogs</name>
+  <description>Automatic, dependency-free command click conversion for Paper.</description>
+  <url>https://github.com/tommasobenatti/NoConfirmationDialogs</url>
+  <licenses><license><name>MIT License</name><url>https://opensource.org/license/mit</url></license></licenses>
+  <properties>
+    <maven.compiler.release>21</maven.compiler.release>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <project.build.outputTimestamp>2026-10-29T10:00:00Z</project.build.outputTimestamp>
+  </properties>
+  <repositories><repository><id>papermc</id><url>https://repo.papermc.io/repository/maven-public/</url></repository></repositories>
+  <dependencies>
+    <dependency><groupId>com.velocitypowered</groupId><artifactId>velocity-api</artifactId><version>3.4.0-SNAPSHOT</version><scope>provided</scope></dependency>
+    <dependency><groupId>net.md-5</groupId><artifactId>bungeecord-api</artifactId><version>1.21-R0.3</version><scope>provided</scope></dependency>
+    <dependency><groupId>io.papermc.paper</groupId><artifactId>paper-api</artifactId><version>1.21.6-R0.1-SNAPSHOT</version><scope>provided</scope></dependency>
+    <dependency><groupId>io.netty</groupId><artifactId>netty-transport</artifactId><version>4.1.118.Final</version><scope>provided</scope></dependency>
+    <dependency><groupId>org.junit.jupiter</groupId><artifactId>junit-jupiter</artifactId><version>5.13.4</version><scope>test</scope></dependency>
+  </dependencies>
+  <build>
+    <resources><resource><directory>src/main/resources</directory><filtering>true</filtering></resource></resources>
+    <plugins>
+      <plugin><groupId>org.apache.maven.plugins</groupId><artifactId>maven-compiler-plugin</artifactId><version>3.14.1</version><configuration><compilerArgs><arg>-Xlint:all,-processing</arg></compilerArgs></configuration></plugin>
+      <plugin><groupId>org.apache.maven.plugins</groupId><artifactId>maven-surefire-plugin</artifactId><version>3.5.4</version><configuration><argLine>@{argLine} -XX:+EnableDynamicAgentLoading</argLine></configuration></plugin>
+      <plugin><groupId>org.apache.maven.plugins</groupId><artifactId>maven-jar-plugin</artifactId><version>3.4.2</version></plugin>
+      <plugin><groupId>org.jacoco</groupId><artifactId>jacoco-maven-plugin</artifactId><version>0.8.14</version><executions><execution><goals><goal>prepare-agent</goal></goals></execution><execution><id>report</id><phase>verify</phase><goals><goal>report</goal></goals></execution></executions></plugin>
+    </plugins>
+  </build>
+  <profiles>
+    <profile>
+      <id>integration-coverage</id>
+      <build><plugins><plugin>
+        <groupId>org.jacoco</groupId><artifactId>jacoco-maven-plugin</artifactId><version>0.8.14</version>
+        <executions>
+          <execution><id>merge-native-runs</id><phase>verify</phase><goals><goal>merge</goal></goals><configuration>
+            <fileSets><fileSet><directory>${project.build.directory}</directory><includes><include>*.exec</include></includes><excludes><exclude>combined.exec</exclude></excludes></fileSet></fileSets>
+            <destFile>${project.build.directory}/combined.exec</destFile>
+          </configuration></execution>
+          <execution><id>combined-report</id><phase>verify</phase><goals><goal>report</goal></goals><configuration>
+            <dataFile>${project.build.directory}/combined.exec</dataFile><outputDirectory>${project.build.directory}/site/jacoco-combined</outputDirectory>
+          </configuration></execution>
+        </executions>
+      </plugin></plugins></build>
+    </profile>
+  </profiles>
+</project>

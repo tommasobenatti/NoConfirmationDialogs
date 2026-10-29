@@ -1,0 +1,9 @@
+name: NoConfirmationDialogs
+prefix: NCD
+version: '${project.version}'
+main: io.github.tommasobenatti.ncd.NcdPlugin
+api-version: '1.21.6'
+description: Automatically removes command execution confirmation from clickable chat.
+author: tommasobenatti
+website: https://github.com/tommasobenatti/NoConfirmationDialogs
+softdepend: [ViaVersion]

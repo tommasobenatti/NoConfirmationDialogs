@@ -1,0 +1,1 @@
+{"id":"ncd","name":"NoConfirmationDialogs","version":"${project.version}","description":"Automatic command click conversion","authors":["tommasobenatti"],"main":"io.github.tommasobenatti.ncd.VelocityPlugin"}

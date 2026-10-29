@@ -1,0 +1,164 @@
+{
+  "candidate": {
+    "version": "0.1.0-SNAPSHOT",
+    "sha256": "c15b0a67d58e2008bd9ad8ed3e3a1bbeba1b0ecbe556285e3b40154285e9bdaf",
+    "size": 31695,
+    "release_approved": false
+  },
+  "date": "2026-10-29",
+  "paper": [
+    {
+      "version": "1.21.7",
+      "build": 32,
+      "sha256": "83838188699cb2837e55b890fb1a1d39ad0710285ed633fbf9fc14e9f47ce078",
+      "candidate_sha256": "c15b0a67d58e2008bd9ad8ed3e3a1bbeba1b0ecbe556285e3b40154285e9bdaf",
+      "passed": true,
+      "assertions": 22,
+      "exit_code": 0
+    },
+    {
+      "version": "1.21.6",
+      "build": 48,
+      "sha256": "35e2dfa66b3491b9d2f0bb033679fa5aca1e1fdf097e7a06a80ce8afeda5c214",
+      "candidate_sha256": "c15b0a67d58e2008bd9ad8ed3e3a1bbeba1b0ecbe556285e3b40154285e9bdaf",
+      "passed": true,
+      "assertions": 22,
+      "exit_code": 0
+    },
+    {
+      "version": "1.21.9",
+      "build": 59,
+      "sha256": "aec002e77c7566e49494fdf05430b96078ffd1d7430e652d4f338fef951e7a10",
+      "candidate_sha256": "c15b0a67d58e2008bd9ad8ed3e3a1bbeba1b0ecbe556285e3b40154285e9bdaf",
+      "passed": true,
+      "assertions": 22,
+      "exit_code": 0
+    },
+    {
+      "version": "1.21.8",
+      "build": 60,
+      "sha256": "8de7c52c3b02403503d16fac58003f1efef7dd7a0256786843927fa92ee57f1e",
+      "candidate_sha256": "c15b0a67d58e2008bd9ad8ed3e3a1bbeba1b0ecbe556285e3b40154285e9bdaf",
+      "passed": true,
+      "assertions": 22,
+      "exit_code": 0
+    },
+    {
+      "version": "1.21.10",
+      "build": 130,
+      "sha256": "158703f75a26f842ea656b3dc6d75bf3d1ec176b97a2c36384d0b80b3871af53",
+      "candidate_sha256": "c15b0a67d58e2008bd9ad8ed3e3a1bbeba1b0ecbe556285e3b40154285e9bdaf",
+      "passed": true,
+      "assertions": 22,
+      "exit_code": 0
+    },
+    {
+      "version": "1.21.11",
+      "build": 132,
+      "sha256": "5ffef465eeeb5f2a3c23a24419d97c51afd7dbb4923ff42df9a3f58bba1ccfba",
+      "candidate_sha256": "c15b0a67d58e2008bd9ad8ed3e3a1bbeba1b0ecbe556285e3b40154285e9bdaf",
+      "passed": true,
+      "assertions": 22,
+      "exit_code": 0
+    },
+    {
+      "version": "26.1.1",
+      "build": 29,
+      "sha256": "43d08ed52c7af4e9f72769122501a5c15f99c7ace0c428a3eef040fd3f6fdbc5",
+      "candidate_sha256": "c15b0a67d58e2008bd9ad8ed3e3a1bbeba1b0ecbe556285e3b40154285e9bdaf",
+      "passed": true,
+      "assertions": 22,
+      "exit_code": 0
+    },
+    {
+      "version": "26.1.2",
+      "build": 74,
+      "sha256": "1d70b1dab9cf4a6de615209a536f3a45a2186240253c428213ce2188ab95e5f7",
+      "candidate_sha256": "c15b0a67d58e2008bd9ad8ed3e3a1bbeba1b0ecbe556285e3b40154285e9bdaf",
+      "passed": true,
+      "assertions": 22,
+      "exit_code": 0
+    },
+    {
+      "version": "26.2",
+      "build": 135,
+      "sha256": "ef3dbc68b013deafdbbee3bebf1ba351671ebcda94a8f136809b7532d5ba2fe1",
+      "candidate_sha256": "c15b0a67d58e2008bd9ad8ed3e3a1bbeba1b0ecbe556285e3b40154285e9bdaf",
+      "passed": true,
+      "assertions": 22,
+      "exit_code": 0
+    },
+    {
+      "version": "26.3",
+      "build": 229,
+      "sha256": "77a54aa38fd72989a5817ccc353f27af7e3879d1fb7312f1862062015ee2a9c2",
+      "candidate_sha256": "c15b0a67d58e2008bd9ad8ed3e3a1bbeba1b0ecbe556285e3b40154285e9bdaf",
+      "passed": true,
+      "assertions": 22,
+      "exit_code": 0
+    }
+  ],
+  "leaf": {
+    "version": "26.3",
+    "build": 13,
+    "distribution": "Leaf",
+    "sha256": "95b0dad1117344a9471a2b71fcb7e38b891c78e7bde403e8e26b7d6e2c8b697c",
+    "candidate_sha256": "c15b0a67d58e2008bd9ad8ed3e3a1bbeba1b0ecbe556285e3b40154285e9bdaf",
+    "passed": true,
+    "assertions": 22
+  },
+  "network": [
+    {
+      "platform": "velocity",
+      "passed": true,
+      "proxy_command": true,
+      "backend_command_event": true,
+      "cancelled_event": true
+    },
+    {
+      "platform": "bungee",
+      "passed": true,
+      "proxy_command": true,
+      "backend_command_event": true,
+      "cancelled_event": true
+    },
+    {
+      "platform": "paper",
+      "passed": true,
+      "native_commands": 3,
+      "permissions_preserved": true,
+      "forged_payload_ignored": true
+    }
+  ],
+  "older_velocity": [
+    {
+      "version": "3.4.0",
+      "passed": true,
+      "result": "NCD_PROXY_PASS velocity assertions=48",
+      "errors": ""
+    },
+    {
+      "version": "3.5.1",
+      "passed": true,
+      "result": "NCD_PROXY_PASS velocity assertions=72",
+      "errors": ""
+    },
+    {
+      "version": "4.0.0",
+      "passed": true,
+      "result": "NCD_PROXY_PASS velocity assertions=72",
+      "errors": ""
+    }
+  ],
+  "proxy_packet_assertions": {
+    "velocity": 84,
+    "bungee": 56
+  },
+  "coverage": {
+    "lines_covered": 339,
+    "lines_total": 367,
+    "branches_covered": 199,
+    "branches_total": 268,
+    "runtime_adapter_classes": true
+  }
+}

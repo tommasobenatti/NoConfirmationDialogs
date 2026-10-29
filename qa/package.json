@@ -1,0 +1,1 @@
+{"private":true,"description":"Synthetic Minecraft client for isolated NCD tests","dependencies":{"minecraft-protocol":"1.68.0"}}
