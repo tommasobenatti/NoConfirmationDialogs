@@ -32,6 +32,7 @@ public final class ProxyProbe {
         Object chatType = type.getField("SYSTEM").get(null);
         Class<?> packetType = Class.forName("com.velocitypowered.proxy.protocol.packet.chat.SystemChatPacket");
         Object packet = packetType.getConstructor(holder, type).newInstance(content, chatType);
+        malformedVelocityChat(adapter, version, chatType, packet);
         var clicks = new CommandClicks(() -> 0, 100, 10000, "proxy");
         Object fixed = adapter.rewrite(packet, clicks);
         check(fixed != packet, "proxy message rewritten");
@@ -108,6 +109,30 @@ public final class ProxyProbe {
         check(adapter.rewrite(raw, clicks).getClass() == packetType, "proxy-only raw backend run_command is converted");
         check(raw.readerIndex() == reader, "original raw buffer untouched");
         raw.release();
+    }
+
+    private static void malformedVelocityChat(VelocityPackets adapter, Object version, Object chatType, Object valid) throws Exception {
+        Class<?> holder = Reflect.call(valid, "getComponent").getClass();
+        var content = holder.getConstructor(version.getClass(), String.class);
+        var packet = valid.getClass().getConstructor(holder, chatType.getClass());
+        var clicks = new CommandClicks(() -> 0, 100, 10000, "proxy");
+        var errors = new java.util.ArrayList<Exception>();
+        var channel = new EmbeddedChannel(new ClickHandler(adapter, clicks, errors::add));
+        try {
+            for (String json : new String[]{JSON + " {}", JSON.substring(0, JSON.length() - 1)}) {
+                Object malformed = packet.newInstance(content.newInstance(version, json), chatType);
+                channel.writeOutbound(malformed);
+                check(channel.readOutbound() == malformed, "malformed system chat forwarded unchanged");
+                check(clicks.size() == 0, "malformed system chat registers no commands");
+                check(errors.isEmpty(), "malformed system chat emits no error: " + errors);
+            }
+            channel.writeOutbound(valid);
+            Object rewritten = channel.readOutbound();
+            check(valid.getClass().isInstance(rewritten) && rewritten != valid && clicks.size() == 1,
+                    "valid chat still converted after malformed chat");
+        } finally {
+            channel.finishAndReleaseAll();
+        }
     }
 
     private static void bungee(int protocolNumber) throws Exception {

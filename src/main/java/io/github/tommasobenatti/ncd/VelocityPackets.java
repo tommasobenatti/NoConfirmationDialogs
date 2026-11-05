@@ -1,6 +1,8 @@
 package io.github.tommasobenatti.ncd;
 
+import com.google.gson.JsonElement;
 import com.google.gson.JsonParser;
+import com.google.gson.JsonSyntaxException;
 import io.netty.buffer.ByteBuf;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.util.ReferenceCountUtil;
@@ -52,7 +54,13 @@ final class VelocityPackets implements PacketAdapter {
         Object holder = Reflect.call(packet, "getComponent");
         String json = (String) Reflect.call(holder, "getJson");
         if (!json.contains("run_command")) return original;
-        var source = JsonParser.parseString(json);
+        JsonElement source;
+        try {
+            source = JsonParser.parseString(json);
+        } catch (JsonSyntaxException ex) {
+            // Only rewrite complete JSON documents. Leave malformed components to Velocity.
+            return original;
+        }
         var fixed = clicks.rewrite(source);
         if (fixed == source) return original;
         Object version = Reflect.get(holder, "version");
