@@ -71,7 +71,7 @@ Tokens bind to the recipient connection, not to a visible mouse gesture: modifie
 | Platform / requirement | Support |
 | --- | --- |
 | Minecraft releases | **1.21.6, 1.21.7, 1.21.8, 1.21.9, 1.21.10, 1.21.11, 26.1.1, 26.1.2, 26.2, 26.3** |
-| Paper | Native runtime probes across every release above |
+| Paper | Native runtime probes across every release above. Paper 1.20.5–1.21.5 uses ViaVersion on the backend for clients on 1.21.6 or later. |
 | Leaf | Paper adapter; Leaf 26.3 tested |
 | Velocity | Versions that support the client's protocol; 3.4.0, 3.5.1, 4.0.0 and 4.3.1 distribution probes |
 | BungeeCord | A current build supporting the client's protocol |

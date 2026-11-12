@@ -14,6 +14,8 @@ import java.util.function.LongSupplier;
 
 final class CommandClicks {
     static final int MAX_CHARACTERS = 262144;
+    static final int MAX_COMPONENT_DEPTH = 64;
+    static final int MAX_COMPONENT_NODES = 8192;
     record Registration(String token, String command) { }
     private record Entry(String command, long created) { }
     private final LongSupplier clock;
@@ -147,18 +149,18 @@ final class CommandClicks {
         int nodes = 0, characters = 0;
         while (!work.isEmpty()) {
             Node node = work.pop();
-            if (++nodes > 8192 || node.depth > 64) return false;
+            if (++nodes > MAX_COMPONENT_NODES || node.depth > MAX_COMPONENT_DEPTH) return false;
             JsonElement value = node.value;
             if (value.isJsonObject()) {
                 for (var field : value.getAsJsonObject().entrySet()) {
                     characters += field.getKey().length();
                     work.push(new Node(field.getValue(), node.depth + 1));
-                    if (work.size() > 8192) return false;
+                    if (work.size() > MAX_COMPONENT_NODES) return false;
                 }
             } else if (value.isJsonArray()) {
                 for (var child : value.getAsJsonArray()) {
                     work.push(new Node(child, node.depth + 1));
-                    if (work.size() > 8192) return false;
+                    if (work.size() > MAX_COMPONENT_NODES) return false;
                 }
             } else if (isString(value)) characters += value.getAsString().length();
             if (characters > MAX_CHARACTERS) return false;
@@ -167,7 +169,7 @@ final class CommandClicks {
     }
 
     private boolean hasCommand(JsonElement value, int depth) {
-        if (depth > 64) return false;
+        if (depth > MAX_COMPONENT_DEPTH) return false;
         if (value.isJsonObject()) {
             JsonObject object = value.getAsJsonObject();
             if (commandFor(object.get("click_event")).isPresent()) return true;
@@ -179,7 +181,7 @@ final class CommandClicks {
     }
 
     private boolean rewriteInPlace(JsonElement value, int depth) {
-        if (depth > 64) return false;
+        if (depth > MAX_COMPONENT_DEPTH) return false;
         boolean changed = false;
         if (value.isJsonObject()) {
             JsonObject object = value.getAsJsonObject();
