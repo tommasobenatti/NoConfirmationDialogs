@@ -21,8 +21,6 @@ import java.util.UUID;
 /** Handles client-protocol packets on legacy Paper, on the client side of ViaVersion's codecs. */
 final class ViaPaperPackets implements PacketAdapter {
     private static final String TOKEN_PREFIX = "ncd:paper/";
-    private static final int MAX_COMPONENT_DEPTH = 64;
-    private static final int MAX_COMPONENT_NODES = 8192;
     private final UserConnection user;
     private final int systemChat, disguisedChat, playerChat, customClick, chatCommand, customPayload;
 
@@ -117,7 +115,7 @@ final class ViaPaperPackets implements PacketAdapter {
         int visited = 0, characters = 0;
         while (!nodes.isEmpty()) {
             var node = nodes.pop();
-            if (++visited > MAX_COMPONENT_NODES || node.depth() > MAX_COMPONENT_DEPTH) return false;
+            if (++visited > CommandClicks.MAX_COMPONENT_NODES || node.depth() > CommandClicks.MAX_COMPONENT_DEPTH) return false;
             int depth = node.depth() + 1;
             if (node.tag() instanceof CompoundTag compound) {
                 var click = compound.getCompoundTag("click_event");
@@ -125,13 +123,13 @@ final class ViaPaperPackets implements PacketAdapter {
                     var command = click.getStringTag("command");
                     if (command != null) actions.add(new Action(compound, command.getValue()));
                 }
-                if (compound.size() > MAX_COMPONENT_NODES - visited - nodes.size()) return false;
+                if (compound.size() > CommandClicks.MAX_COMPONENT_NODES - visited - nodes.size()) return false;
                 for (var entry : compound.entrySet()) {
                     characters += entry.getKey().length();
                     nodes.push(new Node(entry.getValue(), depth));
                 }
             } else if (node.tag() instanceof ListTag<?> list) {
-                if (list.size() > MAX_COMPONENT_NODES - visited - nodes.size()) return false;
+                if (list.size() > CommandClicks.MAX_COMPONENT_NODES - visited - nodes.size()) return false;
                 for (Tag child : list) nodes.push(new Node(child, depth));
             } else if (node.tag() instanceof StringTag string) {
                 characters += string.getValue().length();

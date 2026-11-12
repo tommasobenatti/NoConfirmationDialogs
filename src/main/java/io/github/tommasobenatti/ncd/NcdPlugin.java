@@ -49,16 +49,16 @@ public final class NcdPlugin extends JavaPlugin implements Listener {
             return;
         }
         try {
-            Object handle = Reflect.call(player, "getHandle");
-            Object listener = Reflect.get(handle, "connection");
-            Object connection = Reflect.get(listener, "connection");
-            Channel channel = (Channel) Reflect.get(connection, "channel");
             if (viaEnabled()) {
                 Class<?> via = Class.forName("com.viaversion.viaversion.api.Via");
                 Object api = via.getMethod("getAPI").invoke(null);
                 int protocol = (int) api.getClass().getMethod("getPlayerVersion", java.util.UUID.class).invoke(api, player.getUniqueId());
                 if (protocol < CUSTOM_CLICK_PROTOCOL) return;
             }
+            Object handle = Reflect.call(player, "getHandle");
+            Object listener = Reflect.get(handle, "connection");
+            Object connection = Reflect.get(listener, "connection");
+            Channel channel = (Channel) Reflect.get(connection, "channel");
             Class<?> playListener = Class.forName("net.minecraft.server.network.ServerGamePacketListenerImpl");
             channels.attach(channel, "packet_handler", packets, "paper", () -> {
                 try { return playListener.isInstance(Reflect.call(connection, "getPacketListener")); }
