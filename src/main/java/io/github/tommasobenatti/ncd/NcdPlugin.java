@@ -10,16 +10,24 @@ import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.plugin.java.JavaPlugin;
 
 public final class NcdPlugin extends JavaPlugin implements Listener {
+    static final int CUSTOM_CLICK_PROTOCOL = 771;
     private Channels channels;
     private PaperPackets packets;
 
+    @SuppressWarnings("deprecation")
     @Override public void onEnable() {
         try {
-            packets = new PaperPackets();
+            if (getServer().getUnsafe().getProtocolVersion() >= CUSTOM_CLICK_PROTOCOL) {
+                packets = new PaperPackets();
+            } else if (!viaEnabled()) {
+                getLogger().info("NCD loaded. Translated command clicks require ViaVersion on this backend.");
+                return;
+            }
             channels = new Channels(ex -> getLogger().log(Level.SEVERE, "Could not process command clicks", ex));
             getServer().getPluginManager().registerEvents(this, this);
             getServer().getOnlinePlayers().forEach(this::attach);
-            getLogger().info("NCD enabled: automatic command clicks on " + getServer().getMinecraftVersion());
+            getLogger().info("NCD enabled: " + (packets == null ? "ViaVersion command clicks on " : "automatic command clicks on ")
+                    + getServer().getMinecraftVersion());
         } catch (ReflectiveOperationException | RuntimeException ex) {
             getLogger().log(Level.SEVERE, "Unsupported server internals; NCD cannot start", ex);
             getServer().getPluginManager().disablePlugin(this);
@@ -30,17 +38,26 @@ public final class NcdPlugin extends JavaPlugin implements Listener {
     public void onJoin(PlayerJoinEvent event) { attach(event.getPlayer()); }
 
     private void attach(Player player) {
+        if (packets == null) {
+            if (viaEnabled()) {
+                try {
+                    ViaPaperPackets.attach(player.getUniqueId(), channels);
+                } catch (RuntimeException | LinkageError ex) {
+                    getLogger().log(Level.WARNING, "Could not install ViaVersion command click handler", ex);
+                }
+            }
+            return;
+        }
         try {
             Object handle = Reflect.call(player, "getHandle");
             Object listener = Reflect.get(handle, "connection");
             Object connection = Reflect.get(listener, "connection");
             Channel channel = (Channel) Reflect.get(connection, "channel");
-            // ViaVersion exposes the original client protocol when installed on this backend.
-            if (getServer().getPluginManager().isPluginEnabled("ViaVersion")) {
+            if (viaEnabled()) {
                 Class<?> via = Class.forName("com.viaversion.viaversion.api.Via");
                 Object api = via.getMethod("getAPI").invoke(null);
                 int protocol = (int) api.getClass().getMethod("getPlayerVersion", java.util.UUID.class).invoke(api, player.getUniqueId());
-                if (protocol < 771) return;
+                if (protocol < CUSTOM_CLICK_PROTOCOL) return;
             }
             Class<?> playListener = Class.forName("net.minecraft.server.network.ServerGamePacketListenerImpl");
             channels.attach(channel, "packet_handler", packets, "paper", () -> {
@@ -50,6 +67,10 @@ public final class NcdPlugin extends JavaPlugin implements Listener {
         } catch (ReflectiveOperationException | RuntimeException ex) {
             getLogger().log(Level.SEVERE, "Could not install command click handler", ex);
         }
+    }
+
+    private boolean viaEnabled() {
+        return getServer().getPluginManager().isPluginEnabled("ViaVersion");
     }
 
     @Override public void onDisable() { if (channels != null) channels.close(); }

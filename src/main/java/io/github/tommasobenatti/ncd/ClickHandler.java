@@ -14,19 +14,31 @@ final class ClickHandler extends ChannelDuplexHandler {
     private volatile boolean active = true;
     private final BooleanSupplier playing;
     private final Runnable detached;
+    private final boolean writesInPlace;
 
     ClickHandler(PacketAdapter adapter, CommandClicks clicks, Consumer<Exception> report) {
         this(adapter, clicks, report, () -> true, () -> { });
     }
     ClickHandler(PacketAdapter adapter, CommandClicks clicks, Consumer<Exception> report, BooleanSupplier playing, Runnable detached) {
+        this(adapter, clicks, report, playing, detached, true);
+    }
+
+    ClickHandler(PacketAdapter adapter, CommandClicks clicks, Consumer<Exception> report, BooleanSupplier playing,
+            Runnable detached, boolean writesInPlace) {
         this.adapter = adapter;
         this.clicks = clicks;
         this.report = report;
         this.playing = playing;
         this.detached = detached;
+        this.writesInPlace = writesInPlace;
     }
 
     @Override public void write(ChannelHandlerContext context, Object packet, ChannelPromise promise) throws Exception {
+        if (writesInPlace) rewriteWrite(context, packet, promise);
+        else context.write(packet, promise);
+    }
+
+    void rewriteWrite(ChannelHandlerContext context, Object packet, ChannelPromise promise) {
         Object rewritten = packet;
         if (!active) { context.write(packet, promise); return; }
         try {
