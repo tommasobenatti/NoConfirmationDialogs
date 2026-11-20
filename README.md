@@ -29,6 +29,8 @@ NCD removes Minecraft's extra **Confirm Command Execution** screen from clickabl
 2. Stop the relevant server/proxy, put the JAR in its `plugins/` folder, and start it again.
 3. Reconnect and click an existing chat command, such as a HuskHomes teleport request.
 
+For Paper 1.20.5–1.21.5, [build `1.1.0-SNAPSHOT` from `main`](#build-and-contribute) and install ViaVersion on the backend.
+
 Choose the deployment that matches where your messages originate:
 
 | Deployment | What it covers | What remains outside that installation |
@@ -68,16 +70,21 @@ Tokens bind to the recipient connection, not to a visible mouse gesture: modifie
 
 ## Compatibility
 
-| Platform / requirement | Support |
-| --- | --- |
-| Minecraft releases | **1.21.6, 1.21.7, 1.21.8, 1.21.9, 1.21.10, 1.21.11, 26.1.1, 26.1.2, 26.2, 26.3** |
-| Paper | Native runtime probes across every release above. Paper 1.20.5–1.21.5 can convert clicks for the listed clients through ViaVersion on the backend. The translated path is tested with ViaVersion 5.12.2. |
-| Leaf | Paper adapter; Leaf 26.3 tested |
-| Velocity | Versions that support the client's protocol; 3.4.0, 3.5.1, 4.0.0 and 4.3.1 distribution probes |
-| BungeeCord | A current build supporting the client's protocol |
-| Java | Java 21 bytecode; use the Java version required by your host, including Java 25 for Minecraft 26.x |
+NCD covers Minecraft clients on **1.21.6, 1.21.7, 1.21.8, 1.21.9, 1.21.10, 1.21.11, 26.1.1, 26.1.2, 26.2 and 26.3**.
 
-Spigot/Bukkit without Paper, Folia, snapshots, future protocols and mixed-version layers are outside the supported matrix. Clients older than 1.21.6 do not need this feature; proxy handlers skip them, and Paper skips them when a locally installed ViaVersion reports their protocol. Protocol translation installed only on another machine is not part of the verified matrix.
+| Server or proxy | Version and setup | NCD build |
+| --- | --- | --- |
+| **Paper (native)** | Same Minecraft releases as the client list above. ViaVersion is optional. | `1.0.2-stable` and `main` |
+| **Paper (translated)** | **1.20.5–1.21.5** with ViaVersion installed on the Paper backend. Players use a client from the list above. | `1.1.0-SNAPSHOT` on `main` |
+| **Leaf** | 26.3 tested with the native Paper adapter, including with ViaVersion installed. | `1.0.2-stable` and `main` |
+| **Velocity** | A build that supports the player's client protocol. The pre-encoded chat fix from [PR #1](https://github.com/tommasobenatti/NoConfirmationDialogs/pull/1) is on `main`. | `1.0.2-stable` and `main` |
+| **BungeeCord** | A build that supports the player's client protocol. | `1.0.2-stable` and `main` |
+
+The translated path was tested on Paper **1.20.5** and **1.21.5** with ViaVersion **5.12.2** and a **1.21.6** client, directly and through both proxies. Native Paper support was tested across the Minecraft releases listed above.
+
+Velocity distribution probes have covered 3.4.0, 3.5.1, 4.0.0 and 4.3.1.
+
+Use the Java version required by your host. NCD targets Java 21, and Minecraft 26.x requires Java 25. Minecraft clients older than 1.21.6 do not need this feature. Spigot/Bukkit without Paper, Folia, Minecraft snapshots, future protocols and mixed NCD builds across the proxy and backend are outside the supported matrix.
 
 ## What changes — and what does not
 
