@@ -7,7 +7,7 @@ Run `mvn clean verify` first. Tests exercise nested components, malformed comman
 Use Java 25 on PATH (needed by 26.x), Python 3.9+, and a disposable work directory:
 
 ```sh
-python3 qa/paper_matrix.py --work-dir /tmp/ncd-tests --accept-eula
+python3 qa/paper_matrix.py --jar /path/to/ncd.jar --work-dir /tmp/ncd-tests --accept-eula
 ```
 
 `--accept-eula` is required because the script creates local Minecraft test servers. Downloads come from Paper's official API and are SHA-256 verified. Each server binds to loopback, has its own directory and shuts itself down after runtime assertions. The script writes `paper-matrix.json` with distribution and candidate hashes.
@@ -28,6 +28,8 @@ java -cp /tmp/ncd-tests/probe-classes:target/classes:/tmp/ncd-tests/BungeeCord.j
 
 These probes use the actual proxy distribution classes, including serializers, raw forwarded chat and retained buffers. No proxy source is copied into the production JAR.
 
+If the BungeeCord distribution stores its libraries under `META-INF/libraries/`, extract those JARs and use that directory's classpath wildcard for the probe and fixture compiler. Keep the bootstrap JAR for the network run.
+
 ## Network command routing
 
 1. Finish the Paper matrix so `runtime-1.21.6` and its fixture exist.
@@ -37,10 +39,14 @@ These probes use the actual proxy distribution classes, including serializers, r
 ```sh
 javac --release 21 -cp /tmp/ncd-tests/velocity.jar -d /tmp/ncd-tests/proxy-qa-classes qa/VelocityProbePlugin.java
 javac --release 21 -cp /tmp/ncd-tests/BungeeCord.jar -d /tmp/ncd-tests/proxy-qa-classes qa/BungeeProbePlugin.java
-python3 qa/network_smoke.py --work-dir /tmp/ncd-tests --node /absolute/path/to/node
+python3 qa/network_smoke.py --jar /path/to/ncd.jar --work-dir /tmp/ncd-tests --node /absolute/path/to/node
 ```
 
 The script starts an offline loopback backend, then tests a direct connection and connections through both proxies. It checks proxy-created and backend-created buttons, a permitted backend command, a denied backend permission, a cancelled proxy event, a proxy command, forged identifiers and forged command payloads. The client completes configuration, sends settings and acknowledges its initial teleport before clicking. The disguised-chat command is allowed on the standalone backend but denied by each proxy: the test asserts it executes exactly once across all three connections. Results are written to `network-results.json`.
+
+The Velocity fixture also writes a pre-encoded chat packet from the encoder's context. Repeat with `--velocity-compression 256` to exercise the compressed pipeline.
+
+For the translated backend, stage Paper 1.21.5 with `paper_matrix.py --versions 1.21.5 --via-jar /path/to/ViaVersion-5.12.2.jar` and the same JAR and work directory options as above. Pass `--translated-backend 1.21.5` to the network smoke test. The client is still 1.21.6.
 
 `client.cjs` writes custom-click packets explicitly because the tested minecraft-data definition omitted the native length prefix around the NBT payload. This workaround is in the test client only.
 

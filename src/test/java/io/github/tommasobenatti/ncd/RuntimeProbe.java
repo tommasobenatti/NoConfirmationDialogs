@@ -37,7 +37,13 @@ public final class RuntimeProbe extends JavaPlugin implements Listener {
             getLogger().info("NCD_STANDALONE_ALLOWED " + sender.getName()); return true;
         });
         getServer().getScheduler().runTask(this, () -> {
-            try { probe(); getLogger().info("NCD_RUNTIME_PASS assertions=" + assertions); }
+            try {
+                if (Boolean.getBoolean("ncd.qa.translated")) {
+                    check(getServer().getPluginManager().isPluginEnabled("ViaVersion"), "ViaVersion enabled");
+                    check(getServer().getPluginManager().isPluginEnabled("NoConfirmationDialogs"), "NCD enabled");
+                } else probe();
+                getLogger().info("NCD_RUNTIME_PASS assertions=" + assertions);
+            }
             catch (Throwable ex) { getLogger().log(java.util.logging.Level.SEVERE, "NCD_RUNTIME_FAIL", ex); }
             if (!Boolean.getBoolean("ncd.qa.keep-running")) getServer().shutdown();
         });

@@ -2,7 +2,7 @@
   <modelVersion>4.0.0</modelVersion>
   <groupId>io.github.tommasobenatti</groupId>
   <artifactId>NoConfirmationDialogs</artifactId>
-  <version>1.0.2-stable</version>
+  <version>1.1.0-SNAPSHOT</version>
   <name>NCD — No Confirmation Dialogs</name>
   <description>Automatic command click conversion with optional ViaVersion support.</description>
   <url>https://github.com/tommasobenatti/NoConfirmationDialogs</url>
@@ -11,7 +11,7 @@
   <properties>
     <maven.compiler.release>21</maven.compiler.release>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-    <project.build.outputTimestamp>2026-11-05T08:00:00Z</project.build.outputTimestamp>
+    <project.build.outputTimestamp>2026-11-20T15:00:00Z</project.build.outputTimestamp>
   </properties>
   <repositories>
     <repository><id>papermc</id><url>https://repo.papermc.io/repository/maven-public/</url></repository>

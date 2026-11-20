@@ -64,4 +64,21 @@ class ChannelsTest {
             manager.close(); channel.finishAndReleaseAll();
         }
     }
+
+    @Test void closeAlsoRemovesTheSeparateOutboundHandler() {
+        var channel = new EmbeddedChannel();
+        channel.pipeline().addLast("out", new io.netty.channel.ChannelOutboundHandlerAdapter());
+        channel.pipeline().addLast("host", new ChannelInboundHandlerAdapter());
+        var manager = new Channels(ex -> fail(ex));
+        manager.attach(channel, "host", "out", new ClickHandlerTest.Adapter(), "proxy", () -> true);
+        channel.runPendingTasks();
+        channel.writeOutbound("chat");
+        assertEquals("fixed", channel.readOutbound());
+        manager.close();
+        channel.runPendingTasks();
+        assertNull(channel.pipeline().get("ncd_clicks"));
+        assertNull(channel.pipeline().get("ncd_clicks_outbound"));
+        assertTrue(channel.isActive());
+        channel.finishAndReleaseAll();
+    }
 }

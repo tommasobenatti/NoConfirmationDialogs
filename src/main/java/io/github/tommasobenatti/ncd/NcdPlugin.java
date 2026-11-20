@@ -11,6 +11,7 @@ import org.bukkit.plugin.java.JavaPlugin;
 
 public final class NcdPlugin extends JavaPlugin implements Listener {
     static final int CUSTOM_CLICK_PROTOCOL = 771;
+    static final int LAST_TESTED_PROTOCOL = 777;
     private Channels channels;
     private PaperPackets packets;
 

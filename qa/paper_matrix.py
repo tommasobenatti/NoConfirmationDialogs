@@ -26,7 +26,7 @@ def download(url):
         return response.read()
 
 
-def run(version, base, index):
+def run(version, base, index, candidate, via):
     folder = base / ('runtime-' + version)
     folder.mkdir(parents=True, exist_ok=True)
     meta_path = base / (version + '.json')
@@ -44,15 +44,17 @@ def run(version, base, index):
     plugins = folder / 'plugins'
     plugins.mkdir(exist_ok=True)
     for old in plugins.glob('NoConfirmationDialogs-*.jar'):
-        if old.name != 'NoConfirmationDialogs-1.0.1-stable.jar': old.unlink()
-    shutil.copy2(ROOT / 'target/NoConfirmationDialogs-1.0.1-stable.jar', plugins)
+        if old.name != candidate.name: old.unlink()
+    shutil.copy2(candidate, plugins)
+    if via:
+        shutil.copy2(via, plugins / 'ViaVersion.jar')
     with zipfile.ZipFile(plugins / 'NcdRuntimeProbe.jar', 'w') as jar:
         cls = ROOT / 'target/test-classes/io/github/tommasobenatti/ncd/RuntimeProbe.class'
         jar.write(cls, 'io/github/tommasobenatti/ncd/RuntimeProbe.class')
         jar.writestr('plugin.yml', '''name: NcdRuntimeProbe
 version: '1'
 main: io.github.tommasobenatti.ncd.RuntimeProbe
-api-version: '1.21.6'
+api-version: '1.20.5'
 depend: [NoConfirmationDialogs]
 commands:
   ncdprobe: {}
@@ -80,13 +82,15 @@ enable-status=false
     log = folder / 'ncd-probe.log'
     with log.open('w') as stream:
         command = ['java', '-Dterminal.jline=false', '-Dterminal.ansi=false', '-Xms128M', '-Xmx512M', '-jar', str(paper), '--nogui']
+        if via:
+            command.insert(1, '-Dncd.qa.translated=true')
         if os.environ.get('NCD_JACOCO_AGENT'):
             command.insert(1, '-javaagent:' + os.environ['NCD_JACOCO_AGENT'] + '=destfile=' + str(ROOT / 'target' / ('paper-' + version + '.exec')) + ',includes=io.github.tommasobenatti.ncd.*')
         proc = subprocess.run(command, cwd=folder, stdout=stream, stderr=subprocess.STDOUT, timeout=240)
     output = log.read_text()
     match = re.search(r'NCD_RUNTIME_PASS assertions=(\d+)', output)
     passed = proc.returncode == 0 and bool(match) and 'NCD_RUNTIME_FAIL' not in output and 'Could not' not in output
-    plugin_sha = hashlib.sha256((plugins / 'NoConfirmationDialogs-1.0.1-stable.jar').read_bytes()).hexdigest()
+    plugin_sha = hashlib.sha256((plugins / candidate.name).read_bytes()).hexdigest()
     return {'version': version, 'build': metadata['id'], 'sha256': digest, 'candidate_sha256': plugin_sha, 'passed': passed, 'assertions': int(match[1]) if match else 0, 'exit_code': proc.returncode}
 
 
@@ -94,12 +98,15 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--work-dir', type=Path, default=ROOT / 'qa/runtimes')
     parser.add_argument('--versions', nargs='+', default=VERSIONS)
+    parser.add_argument('--jar', type=Path, required=True)
+    parser.add_argument('--via-jar', type=Path, help='ViaVersion JAR for a translated backend')
     parser.add_argument('--accept-eula', action='store_true', required=True)
     args = parser.parse_args()
     args.work_dir.mkdir(parents=True, exist_ok=True)
     results = []
     with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
-        futures = {pool.submit(run, version, args.work_dir.resolve(), i): version for i, version in enumerate(args.versions)}
+        futures = {pool.submit(run, version, args.work_dir.resolve(), i, args.jar.resolve(strict=True), args.via_jar): version
+                   for i, version in enumerate(args.versions)}
         for future in concurrent.futures.as_completed(futures):
             try:
                 result = future.result()

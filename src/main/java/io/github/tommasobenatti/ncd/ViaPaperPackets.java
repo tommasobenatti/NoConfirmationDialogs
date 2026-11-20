@@ -12,7 +12,7 @@ import com.viaversion.viaversion.api.protocol.packet.provider.PacketTypesProvide
 import com.viaversion.viaversion.api.type.Types;
 import io.netty.buffer.ByteBuf;
 import io.netty.channel.ChannelHandlerContext;
-import java.nio.charset.StandardCharsets;
+import io.netty.handler.codec.CodecException;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Objects;
@@ -20,8 +20,9 @@ import java.util.UUID;
 
 /** Handles client-protocol packets on legacy Paper, on the client side of ViaVersion's codecs. */
 final class ViaPaperPackets implements PacketAdapter {
-    private static final String TOKEN_PREFIX = "ncd:paper/";
+    private static final CodecException CANCELLED = new CodecException();
     private final UserConnection user;
+    private final String decoder;
     private final int systemChat, disguisedChat, playerChat, customClick, chatCommand, customPayload;
 
     static void attach(UUID player, Channels channels) {
@@ -30,7 +31,7 @@ final class ViaPaperPackets implements PacketAdapter {
         var info = user.getProtocolInfo();
         var client = info.protocolVersion();
         var server = info.serverProtocolVersion();
-        if (client.getVersion() < NcdPlugin.CUSTOM_CLICK_PROTOCOL) return;
+        if (client.getVersion() < NcdPlugin.CUSTOM_CLICK_PROTOCOL || client.getVersion() > NcdPlugin.LAST_TESTED_PROTOCOL) return;
         var manager = Via.getManager();
         var path = manager.getProtocolManager().getProtocolPath(client, server);
         if (path == null || path.isEmpty()) return;
@@ -40,13 +41,14 @@ final class ViaPaperPackets implements PacketAdapter {
         var decoder = injector.getDecoderName();
         var channel = user.getChannel();
         if (channel.pipeline().get(encoder) == null || channel.pipeline().get(decoder) == null) return;
-        var packets = new ViaPaperPackets(user, path.getFirst().protocol().getPacketTypesProvider());
+        var packets = new ViaPaperPackets(user, path.getFirst().protocol().getPacketTypesProvider(), decoder);
         // Separate anchors keep both handlers between ViaVersion and the respective compression codecs.
         channels.attach(channel, decoder, encoder, packets, "paper", packets::playing);
     }
 
-    private ViaPaperPackets(UserConnection user, PacketTypesProvider<?, ?, ?, ?> types) {
+    ViaPaperPackets(UserConnection user, PacketTypesProvider<?, ?, ?, ?> types, String decoder) {
         this.user = user;
+        this.decoder = decoder;
         systemChat = id(types.mappedClientboundType(State.PLAY, "SYSTEM_CHAT"), "SYSTEM_CHAT");
         disguisedChat = id(types.mappedClientboundType(State.PLAY, "DISGUISED_CHAT"), "DISGUISED_CHAT");
         playerChat = id(types.mappedClientboundType(State.PLAY, "PLAYER_CHAT"), "PLAYER_CHAT");
@@ -65,14 +67,16 @@ final class ViaPaperPackets implements PacketAdapter {
     }
 
     @Override public Object rewrite(Object packet, CommandClicks clicks) {
-        if (!(packet instanceof ByteBuf raw) || !raw.isReadable() || !playing()) return packet;
+        if (!(packet instanceof ByteBuf raw) || !raw.isReadable()) return packet;
+        int id = raw.getUnsignedByte(raw.readerIndex());
+        // The supported chat IDs fit in one byte.
+        if (id != playerChat && id != systemChat && id != disguisedChat) return packet;
+        if (!playing() || !ClickWire.hasCommand(raw)) return packet;
         ByteBuf input = raw.duplicate();
-        int id = Types.VAR_INT.readPrimitive(input);
+        input.skipBytes(1);
         if (id == playerChat) {
             skipSignedChatFields(input);
             if (!input.readBoolean()) return packet; // Unsigned decoration is optional.
-        } else if (id != systemChat && id != disguisedChat) {
-            return packet;
         }
         int start = input.readerIndex();
         Tag component = Types.TAG.read(input);
@@ -152,44 +156,32 @@ final class ViaPaperPackets implements PacketAdapter {
     }
 
     @Override public String clickId(Object packet) {
-        if (!(packet instanceof ByteBuf raw) || !raw.isReadable() || !playing()) return null;
+        if (!(packet instanceof ByteBuf raw) || !raw.isReadable()) return null;
+        int first = raw.getUnsignedByte(raw.readerIndex());
+        if (((first & 128) == 0 && first != customClick) || !playing()) return null;
         ByteBuf input = raw.duplicate();
-        if (Types.VAR_INT.readPrimitive(input) != customClick) return null;
-        try {
-            int length = Types.VAR_INT.readPrimitive(input);
-            if (length < 1 || length > input.readableBytes()) throw new MalformedClickException("Invalid click identifier");
-            if (length < TOKEN_PREFIX.length()
-                    || !TOKEN_PREFIX.contentEquals(input.getCharSequence(input.readerIndex(), TOKEN_PREFIX.length(), StandardCharsets.US_ASCII))) {
-                return null;
-            }
-            if (length > 128) throw new MalformedClickException("Oversized NCD identifier");
-            String id = input.readCharSequence(length, StandardCharsets.US_ASCII).toString();
-            int payload = Types.VAR_INT.readPrimitive(input);
-            if (payload < 1 || payload > 65536 || payload != input.readableBytes()) {
-                throw new MalformedClickException("Invalid click payload size");
-            }
-            return id;
-        } catch (IndexOutOfBoundsException | IllegalArgumentException ex) {
-            throw new MalformedClickException("Invalid custom click framing");
-        }
+        return ClickWire.readVarInt(input) == customClick ? ClickWire.readClickId(input) : null;
     }
 
     @Override public boolean account(ChannelHandlerContext context, Object packet, boolean commandWillRun) {
-        // The normal Via decoder accounts for converted commands. Charge consumed clicks here.
-        return commandWillRun || user.checkServerboundPacket(((ByteBuf) packet).readableBytes());
+        return user.checkServerboundPacket(((ByteBuf) packet).readableBytes());
     }
 
     @Override public void execute(ChannelHandlerContext context, String command) {
+        var destination = context.pipeline().context(decoder);
+        if (destination == null) throw new IllegalStateException("Missing ViaVersion decoder");
         ByteBuf packet = context.alloc().buffer();
         try {
             Types.VAR_INT.writePrimitive(packet, chatCommand);
             Types.STRING.write(packet, command);
+            if (user.shouldTransformPacket()) user.transformServerbound(packet, ignored -> CANCELLED);
         } catch (RuntimeException ex) {
             packet.release();
+            if (ex == CANCELLED) return;
             throw ex;
         }
-        // Via translates the unsigned command, then Paper handles it with the player's permissions.
-        context.fireChannelRead(packet);
+        // Via has translated the command and already charged the original click.
+        destination.fireChannelRead(packet);
     }
 
     @Override public void publish(ChannelHandlerContext context, CommandClicks clicks) {

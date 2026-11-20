@@ -7,7 +7,6 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.List;
 import java.util.ArrayList;
-import java.util.ArrayDeque;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.function.LongSupplier;
@@ -137,47 +136,35 @@ final class CommandClicks {
     }
 
     JsonElement rewrite(JsonElement source) {
-        if (!hasCommand(source, 0)) return source;
-        if (!withinBudget(source)) return source;
+        var budget = new ComponentBudget();
+        if (!scan(source, 0, budget) || !budget.hasCommand) return source;
         JsonElement copy = source.deepCopy();
         return rewriteInPlace(copy, 0) ? copy : source;
     }
 
-    private record Node(JsonElement value, int depth) { }
-    private boolean withinBudget(JsonElement source) {
-        ArrayDeque<Node> work = new ArrayDeque<>(); work.push(new Node(source, 0));
-        int nodes = 0, characters = 0;
-        while (!work.isEmpty()) {
-            Node node = work.pop();
-            if (++nodes > MAX_COMPONENT_NODES || node.depth > MAX_COMPONENT_DEPTH) return false;
-            JsonElement value = node.value;
-            if (value.isJsonObject()) {
-                for (var field : value.getAsJsonObject().entrySet()) {
-                    characters += field.getKey().length();
-                    work.push(new Node(field.getValue(), node.depth + 1));
-                    if (work.size() > MAX_COMPONENT_NODES) return false;
-                }
-            } else if (value.isJsonArray()) {
-                for (var child : value.getAsJsonArray()) {
-                    work.push(new Node(child, node.depth + 1));
-                    if (work.size() > MAX_COMPONENT_NODES) return false;
-                }
-            } else if (isString(value)) characters += value.getAsString().length();
-            if (characters > MAX_CHARACTERS) return false;
-        }
-        return true;
+    private static final class ComponentBudget {
+        int nodes = MAX_COMPONENT_NODES;
+        int characters = MAX_CHARACTERS;
+        boolean hasCommand;
     }
 
-    private boolean hasCommand(JsonElement value, int depth) {
-        if (depth > MAX_COMPONENT_DEPTH) return false;
+    private boolean scan(JsonElement value, int depth, ComponentBudget budget) {
+        if (--budget.nodes < 0 || depth > MAX_COMPONENT_DEPTH) return false;
         if (value.isJsonObject()) {
             JsonObject object = value.getAsJsonObject();
-            if (commandFor(object.get("click_event")).isPresent()) return true;
-            for (var field : object.entrySet()) if (hasCommand(field.getValue(), depth + 1)) return true;
+            if (!budget.hasCommand) budget.hasCommand = commandFor(object.get("click_event")) != null;
+            for (var field : object.entrySet()) {
+                budget.characters -= field.getKey().length();
+                if (budget.characters < 0 || !scan(field.getValue(), depth + 1, budget)) return false;
+            }
         } else if (value.isJsonArray()) {
-            for (var child : value.getAsJsonArray()) if (hasCommand(child, depth + 1)) return true;
+            for (var child : value.getAsJsonArray()) {
+                if (!scan(child, depth + 1, budget)) return false;
+            }
+        } else if (isString(value)) {
+            budget.characters -= value.getAsString().length();
         }
-        return false;
+        return budget.characters >= 0;
     }
 
     private boolean rewriteInPlace(JsonElement value, int depth) {
@@ -187,8 +174,8 @@ final class CommandClicks {
             JsonObject object = value.getAsJsonObject();
             JsonElement event = object.get("click_event");
             var command = commandFor(event);
-            if (command.isPresent()) {
-                var token = register(command.get());
+            if (command != null) {
+                var token = register(command);
                 if (token.isPresent()) {
                     JsonObject replacement = new JsonObject();
                     replacement.addProperty("action", "custom");
@@ -209,13 +196,14 @@ final class CommandClicks {
         return changed;
     }
 
-    private Optional<String> commandFor(JsonElement event) {
-        if (event == null || !event.isJsonObject()) return Optional.empty();
+    private String commandFor(JsonElement event) {
+        if (event == null || !event.isJsonObject()) return null;
         JsonObject object = event.getAsJsonObject();
         JsonElement action = object.get("action"), command = object.get("command");
-        if (action == null || !action.isJsonPrimitive() || !action.getAsJsonPrimitive().isString()) return Optional.empty();
-        if (action.getAsString().equals("run_command") && isString(command)) return Optional.of(command.getAsString());
-        return Optional.empty();
+        if (action != null && isString(action) && action.getAsString().equals("run_command") && command != null && isString(command)) {
+            return command.getAsString();
+        }
+        return null;
     }
 
     private boolean isString(JsonElement value) {

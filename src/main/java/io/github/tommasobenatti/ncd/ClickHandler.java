@@ -46,9 +46,12 @@ final class ClickHandler extends ChannelDuplexHandler {
                 adapter.release(packet); promise.setSuccess(); return;
             }
             rewritten = adapter.rewrite(packet, clicks);
-            adapter.publish(context, clicks);
+            if (rewritten != packet) adapter.publish(context, clicks);
         } catch (ReflectiveOperationException | RuntimeException ex) {
-            reportOnce(ex); // Preserve the original message if a third-party packet cannot be handled.
+            clicks.drainExports();
+            if (rewritten != packet) adapter.release(rewritten);
+            rewritten = packet;
+            reportOnce(ex);
         }
         if (rewritten != packet) adapter.release(packet);
         context.write(rewritten, promise);

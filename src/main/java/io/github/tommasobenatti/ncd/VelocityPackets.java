@@ -7,7 +7,6 @@ import io.netty.buffer.ByteBuf;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.util.ReferenceCountUtil;
 import java.lang.reflect.Method;
-import java.nio.charset.StandardCharsets;
 import java.util.function.BooleanSupplier;
 
 final class VelocityPackets implements PacketAdapter {
@@ -60,9 +59,10 @@ final class VelocityPackets implements PacketAdapter {
     @Override public Object rewrite(Object packet, CommandClicks clicks) throws ReflectiveOperationException {
         Object original = packet;
         if (packet instanceof ByteBuf raw) {
-            if (!raw.isReadable() || raw.getUnsignedByte(raw.readerIndex()) != systemChatId || !playing.getAsBoolean()) return original;
+            if (!raw.isReadable() || raw.getUnsignedByte(raw.readerIndex()) != systemChatId
+                    || !playing.getAsBoolean() || !ClickWire.hasCommand(raw)) return original;
             ByteBuf input = raw.duplicate();
-            if (readVarInt(input) != systemChatId) return original;
+            if (ClickWire.readVarInt(input) != systemChatId) return original;
             packet = systemChat.getConstructor().newInstance();
             Reflect.method(systemChat, "decode", 3).invoke(packet, input, direction, version);
             if (input.isReadable()) throw new IllegalArgumentException("Unexpected system chat bytes");
@@ -95,50 +95,21 @@ final class VelocityPackets implements PacketAdapter {
         }
     }
 
-    private static int readVarInt(ByteBuf buffer) {
-        int result = 0;
-        for (int shift = 0; shift < 35; shift += 7) {
-            if (!buffer.isReadable()) throw new MalformedClickException("Truncated VarInt");
-            int part = buffer.readUnsignedByte();
-            if (shift == 28 && (part & 0xf0) != 0) throw new MalformedClickException("Overflowing VarInt");
-            result |= (part & 127) << shift;
-            if ((part & 128) == 0) {
-                if (shift > 0 && part == 0) throw new MalformedClickException("Noncanonical VarInt");
-                return result;
-            }
-        }
-        throw new MalformedClickException("Invalid VarInt");
-    }
-
     @Override public String clickId(Object packet) throws ReflectiveOperationException {
         ByteBuf buffer;
         if (packet instanceof ByteBuf raw) {
-            if (!raw.isReadable() || !playing.getAsBoolean()) return null;
+            if (!raw.isReadable()) return null;
             int first = raw.getUnsignedByte(raw.readerIndex());
             // Never let an overlong packet ID hide a custom click from proxy policy.
-            if ((first & 128) == 0 && first != customClickId) return null;
+            if (((first & 128) == 0 && first != customClickId) || !playing.getAsBoolean()) return null;
             buffer = raw.duplicate();
-            if (readVarInt(buffer) != customClickId) return null;
+            if (ClickWire.readVarInt(buffer) != customClickId) return null;
         } else {
             if (!packet.getClass().getName().equals(PREFIX + "ServerboundCustomClickActionPacket")) return null;
             buffer = ((ByteBuf) Reflect.call(packet, "content")).duplicate();
         }
         // Velocity keeps this packet as a retained wire buffer. Read a duplicate without advancing it.
-        int size = readVarInt(buffer);
-        if (size < 1 || size > 32767 || size > buffer.readableBytes()) throw new MalformedClickException("Invalid click identifier length");
-        boolean ncd = size >= 4 && buffer.getByte(buffer.readerIndex()) == 'n' && buffer.getByte(buffer.readerIndex() + 1) == 'c'
-                && buffer.getByte(buffer.readerIndex() + 2) == 'd' && buffer.getByte(buffer.readerIndex() + 3) == ':';
-        if (size > 128) {
-            if (ncd) throw new MalformedClickException("Oversized NCD identifier");
-            return null; // Preserve foreign plugin identifiers without allocating their strings.
-        }
-        String id = buffer.readCharSequence(size, StandardCharsets.UTF_8).toString();
-        if (ncd) {
-            if (id.chars().anyMatch(c -> c > 127)) throw new MalformedClickException("Invalid NCD identifier");
-            int payload = readVarInt(buffer);
-            if (payload < 1 || payload > 65536 || payload != buffer.readableBytes()) throw new MalformedClickException("Invalid click payload size");
-        }
-        return id;
+        return ClickWire.readClickId(buffer);
     }
 
     @Override public void execute(ChannelHandlerContext context, String text) throws ReflectiveOperationException {
@@ -165,7 +136,7 @@ final class VelocityPackets implements PacketAdapter {
             if (original instanceof ByteBuf raw) {
                 if (!raw.isReadable() || raw.getUnsignedByte(raw.readerIndex()) != pluginMessageId || !playing.getAsBoolean()) return false;
                 ByteBuf input = raw.duplicate();
-                if (readVarInt(input) != pluginMessageId) return false;
+                if (ClickWire.readVarInt(input) != pluginMessageId) return false;
                 packet = pluginMessage.getConstructor().newInstance(); temporary = true;
                 Reflect.method(pluginMessage, "decode", 3).invoke(packet, input, direction, version);
             }

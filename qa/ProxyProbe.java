@@ -51,6 +51,14 @@ public final class ProxyProbe {
         var errors = new java.util.ArrayList<Exception>();
         var channel = new EmbeddedChannel();
         channel.pipeline().addLast("frame-decoder", new ChannelInboundHandlerAdapter());
+        Class<?> directionType = Class.forName("com.velocitypowered.proxy.protocol.ProtocolUtils$Direction");
+        Class<?> stateType = Class.forName("com.velocitypowered.proxy.protocol.StateRegistry");
+        Class<?> decoderType = Class.forName("com.velocitypowered.proxy.protocol.netty.MinecraftDecoder");
+        var decoder = (ChannelInboundHandlerAdapter) decoderType.getConstructor(directionType)
+                .newInstance(directionType.getField("SERVERBOUND").get(null));
+        decoderType.getMethod("setState", stateType).invoke(decoder, stateType.getField("PLAY").get(null));
+        decoderType.getMethod("setProtocolVersion", protocol).invoke(decoder, version);
+        channel.pipeline().addLast("minecraft-decoder", decoder);
         channel.pipeline().addLast(new ClickHandler(adapter, clicks, errors::add));
         Class<?> custom = Class.forName("com.velocitypowered.proxy.protocol.packet.ServerboundCustomClickActionPacket");
         var bytes = Unpooled.buffer();
@@ -61,11 +69,9 @@ public final class ProxyProbe {
         Object input = custom.getConstructor().newInstance();
         custom.getMethod("replace", io.netty.buffer.ByteBuf.class).invoke(input, bytes);
         channel.writeInbound(input);
-        ByteBuf command = channel.readInbound();
-        check(command != null && command.readUnsignedByte() == (int) Reflect.get(adapter, "commandId"), "normal command wire packet");
-        Class<?> utils = Class.forName("com.velocitypowered.proxy.protocol.ProtocolUtils");
-        check(utils.getMethod("readString", ByteBuf.class).invoke(null, command).equals("server lobby"), "command preserved");
-        command.release();
+        Object command = channel.readInbound();
+        check(command != null && command.getClass().getSimpleName().equals("UnsignedPlayerCommandPacket"), "native decoder accepted command");
+        check(Reflect.call(command, "getCommand").equals("server lobby"), "command preserved");
         check(bytes.refCnt() == 0, "incoming buffer released");
         check(errors.isEmpty(), "no errors");
         channel.finishAndReleaseAll();

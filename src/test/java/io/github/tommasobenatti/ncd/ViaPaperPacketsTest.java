@@ -20,9 +20,7 @@ class ViaPaperPacketsTest {
                     charged.addAndGet((int) args[0]);
                     return false;
                 });
-        var constructor = ViaPaperPackets.class.getDeclaredConstructor(UserConnection.class, PacketTypesProvider.class);
-        constructor.setAccessible(true);
-        var adapter = constructor.newInstance(user, packetTypes());
+        var adapter = new ViaPaperPackets(user, packetTypes(), "via-decoder");
         var raw = Unpooled.buffer().writeZero(321);
         try {
             assertFalse(adapter.account(null, raw, true));
