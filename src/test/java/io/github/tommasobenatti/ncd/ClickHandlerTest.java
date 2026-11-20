@@ -50,6 +50,35 @@ class ClickHandlerTest {
         channel.finishAndReleaseAll();
     }
 
+    @Test void publicationFailureReleasesTheReplacementAndPreservesTheOriginal() {
+        var replacement = io.netty.buffer.Unpooled.buffer().writeByte(1);
+        var original = io.netty.buffer.Unpooled.buffer().writeByte(2);
+        var clicks = new CommandClicks(() -> 0, 10, 1000, "paper");
+        var adapter = new PacketAdapter() {
+            @Override public Object rewrite(Object packet, CommandClicks registry) {
+                registry.register("help");
+                return replacement;
+            }
+            @Override public void publish(ChannelHandlerContext context, CommandClicks registry) {
+                throw new IllegalStateException("fixture");
+            }
+            @Override public String clickId(Object packet) { return null; }
+            @Override public void execute(ChannelHandlerContext context, String command) { fail("Unexpected command"); }
+        };
+        var errors = new ArrayList<Exception>();
+        var channel = new EmbeddedChannel(new ClickHandler(adapter, clicks, errors::add));
+        try {
+            channel.writeOutbound(original);
+            assertSame(original, channel.readOutbound());
+            assertEquals(0, replacement.refCnt());
+            assertTrue(clicks.drainExports().isEmpty());
+            assertEquals(1, errors.size());
+        } finally {
+            original.release();
+            channel.finishAndReleaseAll();
+        }
+    }
+
     @Test void proxyAdoptsBackendClicksSoItsCommandEventsAndRoutingStillRun() {
         var paper = new CommandClicks(() -> 0, 10, 1000, "paper");
         var proxy = new CommandClicks(() -> 0, 10, 1000, "proxy");

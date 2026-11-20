@@ -1,7 +1,9 @@
 package io.github.tommasobenatti.ncd;
 
 import com.google.gson.JsonParser;
+import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
+import io.netty.channel.ChannelInboundHandlerAdapter;
 import io.netty.channel.embedded.EmbeddedChannel;
 import java.lang.reflect.Proxy;
 import java.util.Optional;
@@ -47,7 +49,17 @@ public final class ProxyProbe {
         Reflect.call(next, "getBinaryTag");
         check(Reflect.call(next, "getComponent") != null, "native component valid");
         var errors = new java.util.ArrayList<Exception>();
-        var channel = new EmbeddedChannel(new ClickHandler(adapter, clicks, errors::add));
+        var channel = new EmbeddedChannel();
+        channel.pipeline().addLast("frame-decoder", new ChannelInboundHandlerAdapter());
+        Class<?> directionType = Class.forName("com.velocitypowered.proxy.protocol.ProtocolUtils$Direction");
+        Class<?> stateType = Class.forName("com.velocitypowered.proxy.protocol.StateRegistry");
+        Class<?> decoderType = Class.forName("com.velocitypowered.proxy.protocol.netty.MinecraftDecoder");
+        var decoder = (ChannelInboundHandlerAdapter) decoderType.getConstructor(directionType)
+                .newInstance(directionType.getField("SERVERBOUND").get(null));
+        decoderType.getMethod("setState", stateType).invoke(decoder, stateType.getField("PLAY").get(null));
+        decoderType.getMethod("setProtocolVersion", protocol).invoke(decoder, version);
+        channel.pipeline().addLast("minecraft-decoder", decoder);
+        channel.pipeline().addLast(new ClickHandler(adapter, clicks, errors::add));
         Class<?> custom = Class.forName("com.velocitypowered.proxy.protocol.packet.ServerboundCustomClickActionPacket");
         var bytes = Unpooled.buffer();
         byte[] id = token.getBytes(StandardCharsets.UTF_8);
@@ -58,7 +70,7 @@ public final class ProxyProbe {
         custom.getMethod("replace", io.netty.buffer.ByteBuf.class).invoke(input, bytes);
         channel.writeInbound(input);
         Object command = channel.readInbound();
-        check(command != null && command.getClass().getSimpleName().equals("UnsignedPlayerCommandPacket"), "native command path");
+        check(command != null && command.getClass().getSimpleName().equals("UnsignedPlayerCommandPacket"), "native decoder accepted command");
         check(Reflect.call(command, "getCommand").equals("server lobby"), "command preserved");
         check(bytes.refCnt() == 0, "incoming buffer released");
         check(errors.isEmpty(), "no errors");
@@ -106,8 +118,11 @@ public final class ProxyProbe {
         Object direction = Class.forName("com.velocitypowered.proxy.protocol.ProtocolUtils$Direction").getField("CLIENTBOUND").get(null);
         Reflect.method(packetType, "encode", 3).invoke(packet, raw, direction, version);
         int reader = raw.readerIndex();
-        check(adapter.rewrite(raw, clicks).getClass() == packetType, "proxy-only raw backend run_command is converted");
+        ByteBuf rewritten = (ByteBuf) adapter.rewrite(raw, clicks);
+        check(rewritten != raw && rewritten.readUnsignedByte() == (int) Reflect.get(adapter, "systemChatId"),
+                "proxy-only raw backend run_command is converted");
         check(raw.readerIndex() == reader, "original raw buffer untouched");
+        rewritten.release();
         raw.release();
     }
 

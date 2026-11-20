@@ -29,13 +29,17 @@ def wait_log(proc, log, needle):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--work-dir', type=Path, required=True)
+    parser.add_argument('--jar', type=Path, required=True)
     parser.add_argument('--node', required=True)
     parser.add_argument('--backend-heap', choices=['512M', '1536M', '2048M'], default='512M')
     parser.add_argument('--interactivechat', action='store_true')
+    parser.add_argument('--velocity-compression', type=int, default=-1)
+    parser.add_argument('--translated-backend', help='Backend version staged with ViaVersion')
     args = parser.parse_args()
     base = args.work_dir.resolve()
-    jar = ROOT / 'target/NoConfirmationDialogs-1.0.1-stable.jar'
-    backend = base / 'runtime-1.21.6'
+    jar = args.jar.resolve(strict=True)
+    backend_version = args.translated_backend or '1.21.6'
+    backend = base / ('runtime-' + backend_version)
     for old in (backend / 'plugins').glob('NoConfirmationDialogs-*.jar'):
         if old.name != jar.name: old.unlink()
     shutil.copy2(jar, backend / 'plugins' / jar.name)
@@ -44,6 +48,7 @@ def main():
 
     def start(folder, command, logfile):
         if folder == backend and args.interactivechat: command.insert(1, '-Dncd.qa.require-interactive=true')
+        if folder == backend and args.translated_backend: command.insert(1, '-Dncd.qa.translated=true')
         if os.environ.get('NCD_JACOCO_AGENT'):
             command.insert(1, '-javaagent:' + os.environ['NCD_JACOCO_AGENT'] + '=destfile=' + str(ROOT / 'target' / (folder.name + '.exec')) + ',includes=io.github.tommasobenatti.ncd.*,classdumpdir=' + str(ROOT / 'target/runtime-dump' / folder.name))
         log = folder / logfile
@@ -63,7 +68,7 @@ def main():
             raise AssertionError(proc.stdout + proc.stderr)
 
     try:
-        proc, backend_log = start(backend, ['java', '-Dterminal.jline=false', '-Dterminal.ansi=false', '-Dncd.qa.keep-running=true', '-Xmx' + args.backend_heap, '-jar', str(base / 'paper-1.21.6.jar'), '--nogui'], 'network-probe.log')
+        proc, backend_log = start(backend, ['java', '-Dterminal.jline=false', '-Dterminal.ansi=false', '-Dncd.qa.keep-running=true', '-Xmx' + args.backend_heap, '-jar', str(base / ('paper-' + backend_version + '.jar')), '--nogui'], 'network-probe.log')
         wait_log(proc, backend_log, 'NCD_RUNTIME_PASS')
         client(25900, 'paper')
         for name in ['velocity', 'bungee']:
@@ -81,7 +86,7 @@ def main():
                 else:
                     fixture.writestr('bungee.yml', 'name: NcdProxyProbe\nversion: "1"\nmain: io.github.tommasobenatti.ncd.qa.' + cls + '\ndepends: [NoConfirmationDialogs]\n')
             if name == 'velocity':
-                (folder / 'velocity.toml').write_text('''config-version = "2.7"
+                (folder / 'velocity.toml').write_text(f'''config-version = "2.7"
 bind = "127.0.0.1:25950"
 motd = "NCD isolated tests"
 online-mode = false
@@ -93,7 +98,7 @@ localhost = ["lobby"]
 lobby = "127.0.0.1:25900"
 try = ["lobby"]
 [advanced]
-compression-threshold = -1
+compression-threshold = {args.velocity_compression}
 ''')
                 cmd = ['java', '-Dterminal.jline=false', '-Dterminal.ansi=false', '-Xmx256M', '-jar', str(base / 'velocity.jar')]
                 ready = 'Done ('
@@ -123,9 +128,9 @@ servers:
                 ready = 'Listening on '
             proxy, log = start(folder, cmd, 'network-probe.log')
             wait_log(proxy, log, ready)
-            client(25950, 'proxy')
+            client(25950, 'velocity' if name == 'velocity' else 'proxy')
             output = log.read_text()
-            assert 'NCD_PROXY_COMMAND_EXECUTED' in output, str(log)
+            assert output.count('NCD_PROXY_COMMAND_EXECUTED') == (2 if name == 'velocity' else 1), str(log)
             assert 'NCD_PROXY_EVENT_CANCELLED' in output, str(log)
             assert 'NCD_PROXY_BACKEND_EVENT_CANCELLED' in output, 'Non-system backend click skipped proxy policy'
             assert 'NCD_PROXY_EVENT ' + ('/' if name == 'bungee' else '') + 'ncdprobe' in output, 'Backend click skipped proxy event'

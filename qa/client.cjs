@@ -63,8 +63,9 @@ function processChat(component) {
     }
   }
   visit(tree);
-  if (seen.size === (mode === 'proxy' ? 5 : 3)) {
-    click(mode === 'proxy' ? 'ncd:proxy/forged' : 'ncd:paper/forged');
+  const expected = mode === 'velocity' ? 6 : mode === 'proxy' ? 5 : 3;
+  if (seen.size === expected) {
+    click(mode === 'paper' ? 'ncd:paper/forged' : 'ncd:proxy/forged');
     setTimeout(() => { clearTimeout(timeout); if (client.ended) return; completed = true; console.log('NCD_CLIENT_PASS', mode, seen.size); client.end(); }, 6000);
   }
 }

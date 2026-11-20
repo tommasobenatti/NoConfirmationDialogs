@@ -71,7 +71,7 @@ Tokens bind to the recipient connection, not to a visible mouse gesture: modifie
 | Platform / requirement | Support |
 | --- | --- |
 | Minecraft releases | **1.21.6, 1.21.7, 1.21.8, 1.21.9, 1.21.10, 1.21.11, 26.1.1, 26.1.2, 26.2, 26.3** |
-| Paper | Native runtime probes across every release above |
+| Paper | Native runtime probes across every release above. Paper 1.20.5–1.21.5 can convert clicks for the listed clients through ViaVersion on the backend. The translated path is tested with ViaVersion 5.12.2. |
 | Leaf | Paper adapter; Leaf 26.3 tested |
 | Velocity | Versions that support the client's protocol; 3.4.0, 3.5.1, 4.0.0 and 4.3.1 distribution probes |
 | BungeeCord | A current build supporting the client's protocol |
@@ -108,7 +108,7 @@ NCD makes no “unexploitable” guarantee. Servers and plugins able to author c
 mvn clean verify
 ```
 
-Output: `target/NoConfirmationDialogs-1.0.2-stable.jar`. Host APIs are provided dependencies; no packet library is shaded or downloaded at runtime. Reproducible QA commands live in [qa/README.md](qa/README.md). CI builds and tests; release publication is a maintainer action.
+Maven writes the JAR to `target/`. Host APIs are provided dependencies. Reproducible QA commands live in [qa/README.md](qa/README.md).
 
 Bug reports should include the Minecraft version, host build, where NCD is installed, and a minimal reproduction. Send security-sensitive reports through [GitHub's private security reporting](https://github.com/tommasobenatti/NoConfirmationDialogs/security), when enabled.
 

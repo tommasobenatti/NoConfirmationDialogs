@@ -9,6 +9,7 @@ import com.velocitypowered.api.event.proxy.ProxyShutdownEvent;
 import com.velocitypowered.api.proxy.Player;
 import com.velocitypowered.api.proxy.ProxyServer;
 import io.netty.channel.Channel;
+import java.util.function.BooleanSupplier;
 import org.slf4j.Logger;
 
 public final class VelocityPlugin {
@@ -33,10 +34,19 @@ public final class VelocityPlugin {
         if (player.getProtocolVersion().getProtocol() < 771 || channels == null) return;
         try {
             Object connection = Reflect.call(player, "getConnection");
-            channels.attach((Channel) Reflect.call(connection, "getChannel"), "handler", new VelocityPackets(player.getProtocolVersion()), "proxy", () -> {
+            Channel channel = (Channel) Reflect.call(connection, "getChannel");
+            BooleanSupplier playing = () -> {
                 try { return Reflect.call(connection, "getState").toString().equals("PLAY"); }
                 catch (ReflectiveOperationException ex) { return false; }
-            });
+            };
+            var pipeline = channel.pipeline();
+            var names = pipeline.names();
+            String framing = pipeline.get("compression-encoder") != null ? "compression-encoder" : "frame-encoder";
+            int index = names.indexOf(framing);
+            if (index < 0 || index + 1 == names.size()) throw new IllegalStateException("Missing Velocity packet framing");
+            // Inspect encoded packets before framing, including writes started at a packet-library encoder.
+            channels.attach(channel, "handler", names.get(index + 1),
+                    new VelocityPackets(player.getProtocolVersion(), playing), "proxy", playing);
         } catch (ReflectiveOperationException | RuntimeException ex) {
             logger.error("Could not install command click handler", ex);
         }

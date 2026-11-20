@@ -1,6 +1,9 @@
 package io.github.tommasobenatti.ncd;
 
 import io.netty.channel.Channel;
+import io.netty.channel.ChannelHandlerContext;
+import io.netty.channel.ChannelOutboundHandlerAdapter;
+import io.netty.channel.ChannelPromise;
 import java.util.Map;
 import java.util.HashMap;
 import java.util.ArrayList;
@@ -10,6 +13,7 @@ import java.util.function.BooleanSupplier;
 
 final class Channels implements AutoCloseable {
     private static final String NAME = "ncd_clicks";
+    private static final String OUTBOUND = "ncd_clicks_outbound";
     private final Map<Channel, ClickHandler> channels = new HashMap<>();
     private final Consumer<Exception> report;
     private volatile boolean closed;
@@ -21,6 +25,10 @@ final class Channels implements AutoCloseable {
     }
 
     void attach(Channel channel, String before, PacketAdapter adapter, String scope, BooleanSupplier playing) {
+        attach(channel, before, null, adapter, scope, playing);
+    }
+
+    void attach(Channel channel, String before, String outboundBefore, PacketAdapter adapter, String scope, BooleanSupplier playing) {
         try { channel.eventLoop().execute(() -> {
             synchronized (channels) {
             if (closed || !channel.isActive() || channel.pipeline().get(NAME) != null) return;
@@ -28,10 +36,21 @@ final class Channels implements AutoCloseable {
                 var clicks = new CommandClicks(() -> TimeUnit.NANOSECONDS.toMillis(System.nanoTime()), 4096, 43_200_000L, scope);
                 var handler = new ClickHandler(adapter, clicks, report, playing, () -> {
                     synchronized (channels) { channels.remove(channel); }
-                });
+                    if (channel.pipeline().get(OUTBOUND) != null) channel.pipeline().remove(OUTBOUND);
+                }, outboundBefore == null);
+                if (outboundBefore != null) {
+                    channel.pipeline().addBefore(outboundBefore, OUTBOUND, new ChannelOutboundHandlerAdapter() {
+                        @Override public void write(ChannelHandlerContext context, Object packet, ChannelPromise promise) {
+                            handler.rewriteWrite(context, packet, promise);
+                        }
+                    });
+                }
                 channel.pipeline().addBefore(before, NAME, handler);
                 channels.put(channel, handler);
-            } catch (RuntimeException ex) { report.accept(ex); }
+            } catch (RuntimeException ex) {
+                if (channel.pipeline().get(OUTBOUND) != null) channel.pipeline().remove(OUTBOUND);
+                report.accept(ex);
+            }
             }
         }); } catch (java.util.concurrent.RejectedExecutionException ex) {
             if (!closed && channel.isActive()) report.accept(ex);
